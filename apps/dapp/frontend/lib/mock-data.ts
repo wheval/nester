@@ -11,6 +11,7 @@ export interface Transaction {
     timestamp: string;
     status: TransactionStatus;
     txHash: string;
+    isOnChain?: boolean;
 }
 
 export type RiskTier = "Safe" | "Balanced" | "Aggressive";

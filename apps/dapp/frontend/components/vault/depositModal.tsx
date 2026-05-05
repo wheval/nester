@@ -248,6 +248,7 @@ export function DepositModal({ open, onClose, vault }: DepositModalProps) {
         },
         amount,
         txHash: txReceipt.txHash,
+        isOnChain: true,
       });
 
       setReceipt(txReceipt);

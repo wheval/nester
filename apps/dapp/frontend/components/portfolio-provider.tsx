@@ -29,6 +29,7 @@ export interface PortfolioTransaction {
     timestamp: string;
     status: PortfolioTransactionStatus;
     txHash: string;
+    isOnChain?: boolean;
 }
 
 interface StoredPosition {
@@ -62,6 +63,7 @@ interface DepositInput {
     };
     amount: number;
     txHash: string;
+    isOnChain?: boolean;
 }
 
 interface TransferInput {
@@ -82,6 +84,7 @@ interface WithdrawalInput {
     positionId: string;
     grossAmount: number;
     txHash: string;
+    isOnChain?: boolean;
 }
 
 interface WithdrawalQuote {
@@ -342,7 +345,7 @@ function PortfolioStore({
         };
     };
 
-    const recordDeposit = ({ vault, amount, txHash }: DepositInput) => {
+    const recordDeposit = ({ vault, amount, txHash, isOnChain }: DepositInput) => {
         const now = new Date();
         const maturityAt = new Date(now);
         maturityAt.setDate(maturityAt.getDate() + (vault.lockDays ?? 0));
@@ -376,12 +379,13 @@ function PortfolioStore({
                 timestamp: now.toISOString(),
                 status: "Confirmed",
                 txHash: txHash || createTransactionHash(),
+                isOnChain: isOnChain ?? false,
             },
             ...current,
         ]);
     };
 
-    const recordWithdrawal = ({ positionId, grossAmount, txHash }: WithdrawalInput) => {
+    const recordWithdrawal = ({ positionId, grossAmount, txHash, isOnChain }: WithdrawalInput) => {
         const quote = getWithdrawalQuote(positionId, grossAmount);
         if (!quote) return null;
 
@@ -426,6 +430,7 @@ function PortfolioStore({
                 timestamp: new Date().toISOString(),
                 status: "Confirmed",
                 txHash: txHash || createTransactionHash(),
+                isOnChain: isOnChain ?? false,
             },
             ...current,
         ]);

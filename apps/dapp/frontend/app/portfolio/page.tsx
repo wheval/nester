@@ -360,7 +360,7 @@ export default function PortfolioPage() {
                                                         tx.status === "Pending" ? "text-amber-500/70" : "text-red-400/70"
                                                     )}>{tx.status}</span>
                                                 </div>
-                                                {tx.txHash && (
+                                                {tx.isOnChain && tx.txHash && (
                                                     <a
                                                         href={`${currentNetwork.explorerUrl}/transactions/${tx.txHash}`}
                                                         target="_blank"

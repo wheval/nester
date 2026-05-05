@@ -23,12 +23,12 @@ import { usePortfolio } from "@/components/portfolio-provider";
 import { cn } from "@/lib/utils";
 import { PositionCards } from "@/components/position-cards";
 import {
-    executeVaultDeposit,
     UserRejectedError,
     TransactionFailedError,
     TransactionTimeoutError,
     truncateTxHash,
 } from "@/lib/stellar/transaction";
+import { simulateSubmission } from "@/lib/mock-soroban";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -516,13 +516,7 @@ function DepositModal({
                                     setErrorMsg("");
                                     try {
                                         setTxState("building");
-                                        const receipt = await executeVaultDeposit({
-                                            walletAddress: address,
-                                            vaultId: vault.id,
-                                            contractId: "",
-                                            asset: selectedAsset,
-                                            amount: parsedAmount,
-                                        });
+                                        const receipt = await simulateSubmission();
 
                                         setTxHash(receipt.txHash);
                                         setTxState("success");
@@ -538,6 +532,7 @@ function DepositModal({
                                             },
                                             amount: parsedAmount,
                                             txHash: receipt.txHash,
+                                            isOnChain: false,
                                         });
                                         setTimeout(onClose, 1500);
                                     } catch (err) {

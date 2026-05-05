@@ -199,6 +199,7 @@ export function WithdrawModal({ open, onClose, position }: WithdrawModalProps) {
         positionId: position.id,
         grossAmount: quote.grossAmount,
         txHash: txReceipt.txHash,
+        isOnChain: true,
       });
 
       if (!result) throw new Error("Unable to record the withdrawal locally.");

@@ -83,7 +83,7 @@ export function RecentActivity({ transactions }: RecentActivityProps) {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            {tx.txHash ? (
+                                            {tx.isOnChain && tx.txHash ? (
                                             <a
                                                 href={getExplorerTxUrl(tx.txHash)}
                                                 target="_blank"
