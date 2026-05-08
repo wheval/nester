@@ -23,12 +23,14 @@ import { usePortfolio } from "@/components/portfolio-provider";
 import { cn } from "@/lib/utils";
 import { PositionCards } from "@/components/position-cards";
 import {
+    buildDepositTransaction,
+    signTransaction,
+    submitTransaction,
     UserRejectedError,
     TransactionFailedError,
     TransactionTimeoutError,
     truncateTxHash,
 } from "@/lib/stellar/transaction";
-import { simulateSubmission } from "@/lib/mock-soroban";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -515,10 +517,30 @@ function DepositModal({
                                     if (!vault || !canSubmit || !address) return;
                                     setErrorMsg("");
                                     try {
-                                        setTxState("building");
-                                        const receipt = await simulateSubmission();
+                                        const USDC_CONTRACT = process.env.NEXT_PUBLIC_VAULT_CONTRACT_ID ?? "";
+                                        const XLM_CONTRACT = process.env.NEXT_PUBLIC_VAULT_XLM_CONTRACT_ID ?? "";
+                                        const contractId = selectedAsset === "XLM" ? XLM_CONTRACT : USDC_CONTRACT;
 
-                                        setTxHash(receipt.txHash);
+                                        if (!/^C[A-Z0-9]{55}$/.test(contractId)) {
+                                            setErrorMsg("Vault contract not configured. Check environment variables.");
+                                            setTxState("error");
+                                            return;
+                                        }
+
+                                        setTxState("building");
+                                        const { xdr } = await buildDepositTransaction({
+                                            walletAddress: address,
+                                            contractId,
+                                            amount: parsedAmount,
+                                        });
+
+                                        setTxState("signing");
+                                        const signedXdr = await signTransaction(xdr);
+
+                                        setTxState("submitting");
+                                        const txReceipt = await submitTransaction(signedXdr);
+
+                                        setTxHash(txReceipt.txHash);
                                         setTxState("success");
                                         refreshBalances();
                                         recordDeposit({
@@ -531,8 +553,8 @@ function DepositModal({
                                                 earlyWithdrawalPenaltyPct: vault.penaltyPct,
                                             },
                                             amount: parsedAmount,
-                                            txHash: receipt.txHash,
-                                            isOnChain: false,
+                                            txHash: txReceipt.txHash,
+                                            isOnChain: true,
                                         });
                                         setTimeout(onClose, 1500);
                                     } catch (err) {

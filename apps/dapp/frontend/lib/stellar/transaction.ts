@@ -42,11 +42,6 @@ export interface DepositParams {
   contractId: string;
   /** Amount in USDC/XLM (human-readable, e.g. 100.50). Converted to stroops internally. */
   amount: number;
-  /**
-   * Minimum vault shares to receive (slippage guard). Defaults to 0 (no minimum).
-   * Pass a non-zero value to reject deposits where the exchange rate slips too far.
-   */
-  minSharesOut?: number;
 }
 
 export interface WithdrawParams {
@@ -135,14 +130,13 @@ function getServer(rpcUrl: string): SorobanRpc.Server {
 export async function buildDepositTransaction(
   params: DepositParams
 ): Promise<BuiltTransaction> {
-  const { walletAddress, contractId, amount, minSharesOut = 0 } = params;
+  const { walletAddress, contractId, amount } = params;
   const network = getCurrentNetwork();
 
   const server = getServer(network.rpcUrl);
   const account = await server.getAccount(walletAddress);
 
   const amountStroops = BigInt(Math.round(amount * 10_000_000));
-  const minSharesStroops = BigInt(Math.round(minSharesOut * 10_000_000));
 
   const contract = new Contract(contractId);
 
@@ -154,8 +148,7 @@ export async function buildDepositTransaction(
       contract.call(
         "deposit",
         new Address(walletAddress).toScVal(),
-        nativeToScVal(amountStroops, { type: "i128" }),
-        nativeToScVal(minSharesStroops, { type: "i128" })
+        nativeToScVal(amountStroops, { type: "i128" })
       )
     )
     .setTimeout(30)
