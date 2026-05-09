@@ -482,6 +482,7 @@ export default function VaultsPage() {
                 )}
 
             <DepositModal
+                key={selectedVault?.id ?? "none"}
                 open={!!selectedVault}
                 onClose={() => setSelectedVault(null)}
                 vault={selectedVault}

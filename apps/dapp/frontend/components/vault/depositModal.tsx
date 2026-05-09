@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
@@ -189,15 +189,6 @@ export function DepositModal({ open, onClose, vault }: DepositModalProps) {
   const supportedAssets = (vault?.supportedAssets ?? ["USDC"]) as ("USDC" | "XLM")[];
   const strategies = vault?.strategies ?? [];
 
-  // Reset asset, strategy, and form state whenever the vault changes
-  useEffect(() => {
-    if (!vault) return;
-    setSelectedAsset((vault.supportedAssets[0] as "USDC" | "XLM") ?? "USDC");
-    setSelectedStrategy(vault.strategies?.[0] ?? null);
-    setAmountInput("");
-    setState("input");
-    setErrorMsg("");
-  }, [vault?.id]);
 
   const amount = Number(amountInput) || 0;
   const meta = vault ? getVaultMeta(vault) : null;
