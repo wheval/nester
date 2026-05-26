@@ -129,39 +129,26 @@ func (s *VaultService) GetVault(ctx context.Context, id uuid.UUID) (vault.Vault,
 	return s.repository.GetVault(ctx, id)
 }
 
-func (s *VaultService) GetUserVaults(ctx context.Context, userID uuid.UUID) ([]vault.Vault, error) {
+func (s *VaultService) ListUserVaults(
+	ctx context.Context,
+	userID uuid.UUID,
+	filter vault.UserListFilter,
+) ([]vault.Vault, int, error) {
 	if userID == uuid.Nil {
-		return nil, vault.ErrInvalidVault
+		return nil, 0, vault.ErrInvalidVault
 	}
-	vaults, err := s.repository.GetUserVaults(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Sort vaults by APY descending
-	for i := 0; i < len(vaults); i++ {
-		for j := i + 1; j < len(vaults); j++ {
-			// Get max APY for each vault
-			maxAPYI := decimal.Zero
-			for _, alloc := range vaults[i].Allocations {
-				if alloc.APY.GreaterThan(maxAPYI) {
-					maxAPYI = alloc.APY
-				}
-			}
-			maxAPYJ := decimal.Zero
-			for _, alloc := range vaults[j].Allocations {
-				if alloc.APY.GreaterThan(maxAPYJ) {
-					maxAPYJ = alloc.APY
-				}
-			}
-			// Swap if j has higher APY
-			if maxAPYJ.GreaterThan(maxAPYI) {
-				vaults[i], vaults[j] = vaults[j], vaults[i]
-			}
+	if filter.Status != "" {
+		if _, err := vault.ParseStatus(filter.Status); err != nil {
+			return nil, 0, err
 		}
 	}
-
-	return vaults, nil
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.PerPage < 1 {
+		filter.PerPage = 20
+	}
+	return s.repository.ListUserVaults(ctx, userID, filter)
 }
 
 func (s *VaultService) RecordDeposit(ctx context.Context, input RecordDepositInput) (vault.Vault, error) {

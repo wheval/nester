@@ -346,9 +346,9 @@ func TestVaultRepositoryIntegrationGetUserVaultsWithAllocations(t *testing.T) {
 	}
 
 	// Get user vaults
-	vaults, err := repository.GetUserVaults(ctx, userID)
+	vaults, _, err := repository.ListUserVaults(ctx, userID, vault.UserListFilter{Page: 1, PerPage: 100})
 	if err != nil {
-		t.Fatalf("GetUserVaults() error = %v", err)
+		t.Fatalf("ListUserVaults() error = %v", err)
 	}
 
 	if len(vaults) != 2 {

@@ -82,7 +82,7 @@ type VaultTransaction struct {
 type Repository interface {
 	CreateVault(ctx context.Context, model Vault) (Vault, error)
 	GetVault(ctx context.Context, id uuid.UUID) (Vault, error)
-	GetUserVaults(ctx context.Context, userID uuid.UUID) ([]Vault, error)
+	ListUserVaults(ctx context.Context, userID uuid.UUID, filter UserListFilter) ([]Vault, int, error)
 	RecordDeposit(ctx context.Context, id uuid.UUID, amount decimal.Decimal) error
 	UpdateVaultBalances(ctx context.Context, id uuid.UUID, totalDeposited decimal.Decimal, currentBalance decimal.Decimal) error
 	ReplaceAllocations(ctx context.Context, vaultID uuid.UUID, allocations []Allocation) error

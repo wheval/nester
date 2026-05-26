@@ -95,9 +95,9 @@ func TestVaultRepositoryIntegrationCRUD(t *testing.T) {
 		t.Fatalf("expected 2 allocations, got %d", len(fetched.Allocations))
 	}
 
-	userVaults, err := repository.GetUserVaults(ctx, userID)
+	userVaults, _, err := repository.ListUserVaults(ctx, userID, vault.UserListFilter{Page: 1, PerPage: 100})
 	if err != nil {
-		t.Fatalf("GetUserVaults() error = %v", err)
+		t.Fatalf("ListUserVaults() error = %v", err)
 	}
 	if len(userVaults) != 1 {
 		t.Fatalf("expected 1 vault for user, got %d", len(userVaults))

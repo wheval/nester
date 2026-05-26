@@ -195,14 +195,29 @@ func (r *handlerRepository) GetVault(_ context.Context, id uuid.UUID) (vault.Vau
 	return cloneHandlerVault(model), nil
 }
 
-func (r *handlerRepository) GetUserVaults(_ context.Context, userID uuid.UUID) ([]vault.Vault, error) {
+func (r *handlerRepository) ListUserVaults(_ context.Context, userID uuid.UUID, filter vault.UserListFilter) ([]vault.Vault, int, error) {
 	models := make([]vault.Vault, 0)
 	for _, model := range r.vaults {
 		if model.UserID == userID {
 			models = append(models, cloneHandlerVault(model))
 		}
 	}
-	return models, nil
+	total := len(models)
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.PerPage < 1 {
+		filter.PerPage = 20
+	}
+	start := (filter.Page - 1) * filter.PerPage
+	if start >= total {
+		return []vault.Vault{}, total, nil
+	}
+	end := start + filter.PerPage
+	if end > total {
+		end = total
+	}
+	return models[start:end], total, nil
 }
 
 func (r *handlerRepository) UpdateVaultBalances(_ context.Context, id uuid.UUID, totalDeposited decimal.Decimal, currentBalance decimal.Decimal) error {

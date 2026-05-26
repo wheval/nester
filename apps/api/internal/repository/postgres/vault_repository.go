@@ -71,17 +71,35 @@ func (r *VaultRepository) GetVault(ctx context.Context, id uuid.UUID) (vault.Vau
 	return model, nil
 }
 
-func (r *VaultRepository) GetUserVaults(ctx context.Context, userID uuid.UUID) ([]vault.Vault, error) {
-	query := `
+func (r *VaultRepository) ListUserVaults(
+	ctx context.Context,
+	userID uuid.UUID,
+	filter vault.UserListFilter,
+) ([]vault.Vault, int, error) {
+	where, args := buildUserVaultWhere(userID, filter)
+
+	countQuery := `SELECT COUNT(*) FROM vaults WHERE ` + where
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, mapRepositoryError(err)
+	}
+
+	sortColumn := sanitizeUserVaultSort(filter.SortField)
+	order := sanitizeOrder(filter.SortOrder)
+	offset := (filter.Page - 1) * filter.PerPage
+
+	listQuery := fmt.Sprintf(`
 		SELECT id, user_id, contract_address, total_deposited, current_balance, currency, status, yield_earned, fees_paid, last_synced_at, deleted_at, created_at, updated_at
 		FROM vaults
-		WHERE user_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
-	`
+		WHERE %s
+		ORDER BY %s %s
+		LIMIT $%d OFFSET $%d
+	`, where, sortColumn, order, len(args)+1, len(args)+2) // #nosec G201 -- sort/order from whitelist
 
-	rows, err := r.db.QueryContext(ctx, query, userID.String())
+	args = append(args, filter.PerPage, offset)
+	rows, err := r.db.QueryContext(ctx, listQuery, args...)
 	if err != nil {
-		return nil, mapRepositoryError(err)
+		return nil, 0, mapRepositoryError(err)
 	}
 	defer rows.Close()
 
@@ -89,12 +107,12 @@ func (r *VaultRepository) GetUserVaults(ctx context.Context, userID uuid.UUID) (
 	for rows.Next() {
 		model, err := scanVault(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		allocations, err := loadAllocations(ctx, r.db, model.ID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		model.Allocations = allocations
@@ -102,10 +120,10 @@ func (r *VaultRepository) GetUserVaults(ctx context.Context, userID uuid.UUID) (
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return vaults, nil
+	return vaults, total, nil
 }
 
 // ListActive returns every non-deleted vault whose status is `active`. Used

@@ -50,18 +50,18 @@ func (r *settlementStubRepo) GetByID(_ context.Context, id uuid.UUID) (offramp.S
 	return *s, nil
 }
 
-func (r *settlementStubRepo) GetByUserID(_ context.Context, userID uuid.UUID, filter offramp.SettlementStatus) ([]offramp.Settlement, error) {
+func (r *settlementStubRepo) ListByUserID(_ context.Context, userID uuid.UUID, filter offramp.UserListFilter) ([]offramp.Settlement, int, string, error) {
 	var out []offramp.Settlement
 	for _, s := range r.data {
 		if s.UserID != userID {
 			continue
 		}
-		if filter != "" && s.Status != filter {
+		if filter.Status != "" && string(s.Status) != filter.Status {
 			continue
 		}
 		out = append(out, *s)
 	}
-	return out, nil
+	return out, len(out), "", nil
 }
 
 func (r *settlementStubRepo) UpdateStatus(_ context.Context, id uuid.UUID, status offramp.SettlementStatus, completedAt *time.Time) error {

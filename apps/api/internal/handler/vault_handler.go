@@ -12,6 +12,7 @@ import (
 	"github.com/suncrestlabs/nester/apps/api/internal/domain/vault"
 	"github.com/suncrestlabs/nester/apps/api/internal/service"
 	logpkg "github.com/suncrestlabs/nester/apps/api/pkg/logger"
+	"github.com/suncrestlabs/nester/apps/api/pkg/listquery"
 	"github.com/suncrestlabs/nester/apps/api/pkg/response"
 )
 
@@ -116,13 +117,28 @@ func (h *VaultHandler) listUserVaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, err := h.service.GetUserVaults(r.Context(), userID)
+	params, err := listquery.ParseVaultList(r)
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr(err.Error()))
+		return
+	}
+
+	models, total, err := h.service.ListUserVaults(r.Context(), userID, vault.UserListFilter{
+		Page:         params.Page.Page,
+		PerPage:      params.Page.PerPage,
+		SortField:    params.Sort.Field,
+		SortOrder:    params.Sort.Order,
+		Status:       params.Status,
+		Currency:     params.Currency,
+		MinBalance:   params.MinBalance,
+		CreatedAfter: params.CreatedAfter,
+	})
 	if err != nil {
 		h.writeDomainError(w, r, err)
 		return
 	}
 
-	response.WriteJSON(w, http.StatusOK, response.OK(models))
+	response.WriteJSON(w, http.StatusOK, response.PaginatedOK(models, params.Page.Page, params.Page.PerPage, total, ""))
 }
 
 func (h *VaultHandler) getAllocations(w http.ResponseWriter, r *http.Request) {

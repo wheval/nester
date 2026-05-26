@@ -11,6 +11,7 @@ import (
 	"github.com/suncrestlabs/nester/apps/api/internal/domain/offramp"
 	"github.com/suncrestlabs/nester/apps/api/internal/service"
 	logpkg "github.com/suncrestlabs/nester/apps/api/pkg/logger"
+	"github.com/suncrestlabs/nester/apps/api/pkg/listquery"
 	"github.com/suncrestlabs/nester/apps/api/pkg/response"
 )
 
@@ -148,19 +149,34 @@ func (h *SettlementHandler) listUserSettlements(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	statusFilter := r.URL.Query().Get("status")
+	params, err := listquery.ParseSettlementList(r)
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr(err.Error()))
+		return
+	}
 
-	models, err := h.service.GetUserSettlements(r.Context(), userID, statusFilter)
+	models, total, nextCursor, err := h.service.ListUserSettlements(r.Context(), userID, offramp.UserListFilter{
+		Page:                params.Page.Page,
+		PerPage:             params.Page.PerPage,
+		SortField:           params.Sort.Field,
+		SortOrder:           params.Sort.Order,
+		Cursor:              params.Page.Cursor,
+		Status:              params.Status,
+		DateFrom:            params.DateFrom,
+		DateTo:              params.DateTo,
+		MinAmount:           params.MinAmount,
+		DestinationProvider: params.DestinationProvider,
+		FiatCurrency:        params.FiatCurrency,
+	})
 	if err != nil {
 		h.writeDomainError(w, r, err)
 		return
 	}
 
-	// Always return an array, never an object
 	if models == nil {
 		models = []offramp.Settlement{}
 	}
-	response.WriteJSON(w, http.StatusOK, response.OK(models))
+	response.WriteJSON(w, http.StatusOK, response.PaginatedOK(models, params.Page.Page, params.Page.PerPage, total, nextCursor))
 }
 
 func (h *SettlementHandler) updateStatus(w http.ResponseWriter, r *http.Request) {

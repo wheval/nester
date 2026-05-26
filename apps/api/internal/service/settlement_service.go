@@ -101,27 +101,38 @@ func (s *SettlementService) GetSettlement(ctx context.Context, id uuid.UUID) (of
 	return s.repository.GetByID(ctx, id)
 }
 
-// GetUserSettlements returns all settlements for a user. If statusFilter is
-// non-empty it is validated and passed to the repository as a WHERE clause.
-func (s *SettlementService) GetUserSettlements(
+// ListUserSettlements returns a paginated, filterable list of settlements for a user.
+func (s *SettlementService) ListUserSettlements(
 	ctx context.Context,
 	userID uuid.UUID,
-	statusFilter string,
-) ([]offramp.Settlement, error) {
+	filter offramp.UserListFilter,
+) ([]offramp.Settlement, int, string, error) {
 	if userID == uuid.Nil {
-		return nil, offramp.ErrInvalidSettlement
+		return nil, 0, "", offramp.ErrInvalidSettlement
 	}
-
-	var parsedFilter offramp.SettlementStatus
-	if statusFilter != "" {
-		parsed, err := offramp.ParseStatus(statusFilter)
-		if err != nil {
-			return nil, err
+	if filter.Status != "" {
+		if _, err := offramp.ParseStatus(filter.Status); err != nil {
+			return nil, 0, "", err
 		}
-		parsedFilter = parsed
 	}
-
-	return s.repository.GetByUserID(ctx, userID, parsedFilter)
+	sortField := filter.SortField
+	if sortField == "" {
+		sortField = "created_at"
+	}
+	sortOrder := filter.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+	if filter.Cursor != "" && (sortField != "created_at" || sortOrder == "asc") {
+		return nil, 0, "", offramp.ErrInvalidSettlement
+	}
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.PerPage < 1 {
+		filter.PerPage = 20
+	}
+	return s.repository.ListByUserID(ctx, userID, filter)
 }
 
 // UpdateStatus validates the state transition and persists the new status.
