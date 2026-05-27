@@ -15,6 +15,7 @@ import (
 
 	perfdom "github.com/suncrestlabs/nester/apps/api/internal/domain/performance"
 	"github.com/suncrestlabs/nester/apps/api/internal/domain/vault"
+	"github.com/suncrestlabs/nester/apps/api/internal/domain/analytics"
 )
 
 // VaultLister is the subset of the vault repo we need. Defined locally so
@@ -148,39 +149,39 @@ type BalanceProvider interface {
 }
 
 // GetUserAnalytics returns aggregated analytics data for a user's vaults
-func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTime, toTime time.Time) (AnalyticsResponse, error) {
+func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTime, toTime time.Time) (*analytics.AnalyticsResponse, error) {
 	// Get user's vaults
-	userVaults, err := s.repo.GetUserVaults(ctx, userID)
+	userVaults, err := s.vaultRepo.GetUserVaults(ctx, userID)
 	if err != nil {
-		return AnalyticsResponse{}, fmt.Errorf("failed to get user vaults: %w", err)
+		return &analytics.AnalyticsResponse{}, fmt.Errorf("failed to get user vaults: %w", err)
 	}
 
 	if len(userVaults) == 0 {
-		// Return empty response if user has no vaults
-		return AnalyticsResponse{
-			DailySnapshots:      []DailySnapshot{},
-			VaultMonthlyYield:   []VaultMonthlyYield{},
-			CurrentAllocation:   []CurrentAllocation{},
-			PerformanceMetrics:  PerformanceMetrics{},
-			Vaults:              []VaultInfo{},
-		}, nil
+	// Return empty response if user has no vaults
+	return &analytics.AnalyticsResponse{
+		DailySnapshots:      []analytics.DailySnapshot{},
+		VaultMonthlyYield:   []analytics.VaultMonthlyYield{},
+		CurrentAllocation:   []analytics.CurrentAllocation{},
+		PerformanceMetrics:  analytics.PerformanceMetrics{},
+		Vaults:              []analytics.VaultInfo{},
+	}, nil
 	}
 
 	// Get daily snapshots for the user (aggregated across all vaults)
 	// For now, we'll use the latest snapshot as a placeholder
 	// In a real implementation, this would query a user-level analytics table or aggregate vault snapshots
-	var dailySnapshots []DailySnapshot
+	var dailySnapshots []analytics.DailySnapshot
 	if len(userVaults) > 0 {
 		// For simplicity, we're generating a simple time series based on the first vault's history
 		// In production, this should come from a dedicated analytics table or service
 		firstVaultID := userVaults[0].VaultID
 		snapshots, err := s.repo.HistoryForVault(ctx, firstVaultID, fromTime)
 		if err != nil && !errors.Is(err, perfdom.ErrSnapshotNotFound) {
-			return AnalyticsResponse{}, fmt.Errorf("failed to get vault history: %w", err)
+			return &analytics.AnalyticsResponse{}, fmt.Errorf("failed to get vault history: %w", err)
 		}
 
 		for _, snap := range snapshots {
-			dailySnapshots = append(dailySnapshots, DailySnapshot{
+			dailySnapshots = append(dailySnapshots, analytics.DailySnapshot{
 				Date:          snap.SnapshotAt.Format("2006-01-02"),
 				TotalBalanceUSD: snap.TotalBalance.InexactFloat64(),
 				YieldEarnedUSD:  snap.TotalYieldEarned.InexactFloat64(),
@@ -189,12 +190,12 @@ func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTi
 	}
 
 	// Get vault monthly yield (aggregated yield per vault per month)
-	var vaultMonthlyYield []VaultMonthlyYield
+	var vaultMonthlyYield []analytics.VaultMonthlyYield
 	// This would typically come from a separate aggregation table
 	// For now, we'll leave it empty and let the frontend handle empty state
 
 	// Get current allocation across all vaults
-	var currentAllocation []CurrentAllocation
+	var currentAllocation []analytics.CurrentAllocation
 	protocolAllocations := make(map[string]decimal.Decimal)
 	protocolAPYSums := make(map[string]decimal.Decimal)
 	var totalBalance decimal.Decimal
@@ -215,7 +216,7 @@ func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTi
 			if !amount.IsZero() {
 				avgAPY = protocolAPYSums[protocol].Div(amount).InexactFloat64()
 			}
-			currentAllocation = append(currentAllocation, CurrentAllocation{
+			currentAllocation = append(currentAllocation, analytics.CurrentAllocation{
 				Protocol:      protocol,
 				AllocationPCT: allocationPCT,
 				BalanceUSD:    amount.InexactFloat64(),
@@ -277,14 +278,14 @@ func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTi
 	var yieldChangePCT float64 = 0.0
 
 	// Build vaults info for comparison table
-	var vaultsInfo []VaultInfo
+	var vaultsInfo []analytics.VaultInfo
 	for _, vault := range userVaults {
 		var lockPeriodDays int
 		// Determine lock period from vault metadata or default to 0
 		// This would come from vault configuration in a real implementation
 		lockPeriodDays = 0 // placeholder
 
-		vaultsInfo = append(vaultsInfo, VaultInfo{
+		vaultsInfo = append(vaultsInfo, analytics.VaultInfo{
 			ID:            vault.ID.String(),
 			Name:          vault.ContractAddress,
 			BalanceUSD:    vault.CurrentBalance.InexactFloat64(),
@@ -294,11 +295,11 @@ func (s *Service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, fromTi
 		})
 	}
 
-	return AnalyticsResponse{
+	return &analytics.AnalyticsResponse{
 		DailySnapshots:      dailySnapshots,
 		VaultMonthlyYield:   vaultMonthlyYield,
 		CurrentAllocation:   currentAllocation,
-		PerformanceMetrics: PerformanceMetrics{
+		PerformanceMetrics: analytics.PerformanceMetrics{
 			TotalYieldEarned: totalYieldEarned.InexactFloat64(),
 			YieldChangePCT:   yieldChangePCT,
 			BestVaultName:    bestVaultName,
