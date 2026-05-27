@@ -148,7 +148,7 @@ func (s *SettlementService) UpdateStatus(ctx context.Context, input UpdateStatus
 	}
 
 	if current.UserID != input.CallerID {
-		return offramp.Settlement{}, offramp.ErrForbidden
+		return offramp.Settlement{}, offramp.ErrSettlementNotFound
 	}
 
 	if !current.CanTransitionTo(input.NewStatus) {

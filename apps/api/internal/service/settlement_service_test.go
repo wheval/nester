@@ -404,7 +404,7 @@ func TestUpdateStatus_CannotLeaveFailed(t *testing.T) {
 	}
 }
 
-func TestUpdateStatus_ForbiddenForNonOwner(t *testing.T) {
+func TestUpdateStatus_NotFoundForNonOwner(t *testing.T) {
 	svc := service.NewSettlementService(newStubRepo())
 	ctx := context.Background()
 
@@ -416,7 +416,7 @@ func TestUpdateStatus_ForbiddenForNonOwner(t *testing.T) {
 		CallerID:     attacker,
 		NewStatus:    offramp.StatusLiquidityMatched,
 	})
-	if !errors.Is(err, offramp.ErrForbidden) {
-		t.Errorf("expected ErrForbidden for non-owner, got %v", err)
+	if !errors.Is(err, offramp.ErrSettlementNotFound) {
+		t.Errorf("expected ErrSettlementNotFound for non-owner, got %v", err)
 	}
 }

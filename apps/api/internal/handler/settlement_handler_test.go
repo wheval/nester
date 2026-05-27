@@ -100,7 +100,9 @@ func TestSettlementHandler_PostCreates201(t *testing.T) {
 	h := NewSettlementHandler(svc)
 	mux := http.NewServeMux()
 	h.Register(mux)
-	server := httptest.NewServer(middleware.Logging(slog.New(slog.NewTextHandler(io.Discard, nil)))(mux))
+	// Inject auth user middleware
+	handler := injectAuthUser(auth.User{ID: userID.String()}, mux)
+	server := httptest.NewServer(middleware.Logging(slog.New(slog.NewTextHandler(io.Discard, nil)))(handler))
 	defer server.Close()
 
 	resp, err := http.Post(
@@ -146,7 +148,7 @@ func TestSettlementHandler_PostDomainValidation400(t *testing.T) {
 	h := NewSettlementHandler(svc)
 	mux := http.NewServeMux()
 	h.Register(mux)
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))
 	defer server.Close()
 
 	// bank_transfer without bank_code
@@ -197,7 +199,7 @@ func TestSettlementHandler_Get200And404(t *testing.T) {
 	h := NewSettlementHandler(svc)
 	mux := http.NewServeMux()
 	h.Register(mux)
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/v1/settlements/" + created.ID.String())
@@ -216,6 +218,32 @@ func TestSettlementHandler_Get200And404(t *testing.T) {
 	defer resp404.Body.Close()
 	if resp404.StatusCode != http.StatusNotFound {
 		t.Fatalf("want 404, got %d", resp404.StatusCode)
+	}
+
+	attacker := uuid.New()
+	created2, _ := svc.InitiateSettlement(context.Background(), service.InitiateSettlementInput{
+		UserID:       attacker,
+		VaultID:      vaultID,
+		Amount:       decimal.RequireFromString("10"),
+		Currency:     "USDC",
+		FiatCurrency: "NGN",
+		FiatAmount:   decimal.RequireFromString("100"),
+		ExchangeRate: decimal.RequireFromString("10"),
+		Destination: offramp.Destination{
+			Type:          "mobile_money",
+			Provider:      "mpesa",
+			AccountNumber: "0712345678",
+			AccountName:   "Jane",
+		},
+	})
+	
+	respNonOwner, err := http.Get(server.URL + "/api/v1/settlements/" + created2.ID.String())
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer respNonOwner.Body.Close()
+	if respNonOwner.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404 for non-owner, got %d", respNonOwner.StatusCode)
 	}
 }
 
@@ -270,7 +298,7 @@ func TestSettlementHandler_PatchStatus200(t *testing.T) {
 	}
 }
 
-func TestSettlementHandler_PatchStatus403NonOwner(t *testing.T) {
+func TestSettlementHandler_PatchStatus404NonOwner(t *testing.T) {
 	ownerID := uuid.New()
 	vaultID := uuid.New()
 	svc := service.NewSettlementService(newSettlementStubRepo())
@@ -313,8 +341,8 @@ func TestSettlementHandler_PatchStatus403NonOwner(t *testing.T) {
 		t.Fatalf("PATCH: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("want 403 for non-owner, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404 for non-owner, got %d", resp.StatusCode)
 	}
 }
 
@@ -351,7 +379,7 @@ func TestSettlementHandler_ListUserSettlementsWithStatus(t *testing.T) {
 	h := NewSettlementHandler(svc)
 	mux := http.NewServeMux()
 	h.Register(mux)
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))
 	defer server.Close()
 
 	_, err := http.Post(server.URL+"/api/v1/settlements", "application/json", bytes.NewBufferString(validSettlementJSONBody(userID, vaultID)))

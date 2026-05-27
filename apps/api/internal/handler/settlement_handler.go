@@ -64,9 +64,15 @@ func (h *SettlementHandler) initiateSettlement(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	userID, err := uuid.Parse(req.UserID)
+	caller, ok := auth.GetUserFromContext(r.Context())
+	if !ok {
+		response.WriteJSON(w, http.StatusUnauthorized, response.Err(http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized"))
+		return
+	}
+
+	userID, err := uuid.Parse(caller.ID)
 	if err != nil {
-		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("user_id must be a valid UUID"))
+		response.WriteJSON(w, http.StatusUnauthorized, response.Err(http.StatusUnauthorized, "UNAUTHORIZED", "invalid caller identity"))
 		return
 	}
 
@@ -132,6 +138,12 @@ func (h *SettlementHandler) getSettlement(w http.ResponseWriter, r *http.Request
 	model, err := h.service.GetSettlement(r.Context(), id)
 	if err != nil {
 		h.writeDomainError(w, r, err)
+		return
+	}
+
+	caller, ok := auth.GetUserFromContext(r.Context())
+	if !ok || model.UserID.String() != caller.ID {
+		response.WriteJSON(w, http.StatusNotFound, response.NotFound("settlement"))
 		return
 	}
 
