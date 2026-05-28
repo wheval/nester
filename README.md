@@ -91,7 +91,7 @@ All AI suggestions include reasoning and confidence levels. Disclaimer always pr
 
 **Backend Services** — Real-time APY monitoring, fiat settlement orchestration, and AI inference pipeline.
 
-**Client Applications** — Web app (Next.js), mobile app (React Native), and API for integrations.
+**Client Applications** — Web app (Next.js), mobile app (Flutter/Dart), and API for integrations.
 
 ---
 
@@ -173,8 +173,8 @@ Test credentials: user `550e8400-e29b-41d4-a716-446655440001` / `testuser@nester
 |-------|-------|--------|
 | **Phase 1** | Core savings vaults + manual rebalancing | In Progress |
 | **Phase 2** | Automated rebalancing + LP aggregator | Planned |
-| **Phase 3** | Fiat offramp integration (Nigeria first) | Planned |
-| **Phase 4** | AI Intelligence Layer (Prometheus) | Planned |
+| **Phase 3** | Fiat offramp integration (Nigeria first) | In Progress |
+| **Phase 4** | AI Intelligence Layer (Prometheus) | In Progress |
 | **Phase 5** | Multi-region expansion | Future |
 
 ---
@@ -195,7 +195,7 @@ Nester is being built in the open. We welcome contributions from developers, des
 |------|-------------|--------|
 | Smart Contracts | Vault logic, rebalancing, LP routing | Soroban, Rust, Stellar |
 | Backend | Settlement orchestration, AI pipeline | Node.js, Python, PostgreSQL |
-| Frontend | Web/mobile UI, dashboards | React, Next.js, React Native |
+| Frontend | Web/mobile UI, dashboards | React, Next.js, Flutter/Dart |
 | AI/ML | Market analysis models, risk scoring | Python, ML frameworks |
 | Documentation | Guides, API docs, tutorials | Technical writing |
 | Security | Audits, penetration testing, threat modeling | Smart contract security |
