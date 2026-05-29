@@ -45,7 +45,7 @@ func (r *UserRepository) Create(ctx context.Context, model *user.User) error {
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*user.User, error) {
 	query := `
-		SELECT id, wallet_address, display_name, kyc_status, tier, last_login_at, created_at, updated_at
+		SELECT id, wallet_address, display_name, kyc_status, tier, kyc_submitted_at, kyc_reviewed_at, kyc_rejection_reason, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -54,7 +54,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*user.User,
 
 func (r *UserRepository) GetByWalletAddress(ctx context.Context, addr string) (*user.User, error) {
 	query := `
-		SELECT id, wallet_address, display_name, kyc_status, tier, last_login_at, created_at, updated_at
+		SELECT id, wallet_address, display_name, kyc_status, tier, kyc_submitted_at, kyc_reviewed_at, kyc_rejection_reason, last_login_at, created_at, updated_at
 		FROM users
 		WHERE wallet_address = $1
 	`
@@ -67,14 +67,17 @@ type userScanner interface {
 
 func scanUser(row userScanner) (*user.User, error) {
 	var (
-		id            string
-		walletAddress string
-		displayName   string
-		kycStatus     string
-		tier          string
-		lastLoginAt   sql.NullTime
-		createdAt     time.Time
-		updatedAt     time.Time
+		id                 string
+		walletAddress      string
+		displayName        string
+		kycStatus          string
+		tier               string
+		kycSubmittedAt     sql.NullTime
+		kycReviewedAt      sql.NullTime
+		kycRejectionReason sql.NullString
+		lastLoginAt        sql.NullTime
+		createdAt          time.Time
+		updatedAt          time.Time
 	)
 
 	if err := row.Scan(
@@ -83,6 +86,9 @@ func scanUser(row userScanner) (*user.User, error) {
 		&displayName,
 		&kycStatus,
 		&tier,
+		&kycSubmittedAt,
+		&kycReviewedAt,
+		&kycRejectionReason,
 		&lastLoginAt,
 		&createdAt,
 		&updatedAt,
@@ -98,21 +104,36 @@ func scanUser(row userScanner) (*user.User, error) {
 		return nil, err // should not happen if UUID is well-formed in DB
 	}
 
-	var lastLoginAtPtr *time.Time
+	var lastLoginAtPtr, kycSubAtPtr, kycRevAtPtr *time.Time
 	if lastLoginAt.Valid {
 		t := lastLoginAt.Time
 		lastLoginAtPtr = &t
 	}
+	if kycSubmittedAt.Valid {
+		t := kycSubmittedAt.Time
+		kycSubAtPtr = &t
+	}
+	if kycReviewedAt.Valid {
+		t := kycReviewedAt.Time
+		kycRevAtPtr = &t
+	}
+	var kycRejReasonPtr *string
+	if kycRejectionReason.Valid {
+		kycRejReasonPtr = &kycRejectionReason.String
+	}
 
 	return &user.User{
-		ID:            parsedID,
-		WalletAddress: walletAddress,
-		DisplayName:   displayName,
-		KYCStatus:     user.KYCStatus(kycStatus),
-		Tier:          tier,
-		LastLoginAt:   lastLoginAtPtr,
-		CreatedAt:     createdAt,
-		UpdatedAt:     updatedAt,
+		ID:                 parsedID,
+		WalletAddress:      walletAddress,
+		DisplayName:        displayName,
+		KYCStatus:          user.KYCStatus(kycStatus),
+		Tier:               tier,
+		KYCSubmittedAt:     kycSubAtPtr,
+		KYCReviewedAt:      kycRevAtPtr,
+		KYCRejectionReason: kycRejReasonPtr,
+		LastLoginAt:        lastLoginAtPtr,
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
 	}, nil
 }
 
@@ -135,6 +156,59 @@ func (r *UserRepository) GetRoles(ctx context.Context, id uuid.UUID) ([]string, 
 		roles = append(roles, role)
 	}
 	return roles, rows.Err()
+}
+
+func (r *UserRepository) SaveKYCDocument(ctx context.Context, doc *user.KYCDocument) error {
+	query := `
+		INSERT INTO kyc_documents (
+			id, user_id, id_type, id_number, front_object_key, back_object_key
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING submitted_at
+	`
+	err := r.db.QueryRowContext(ctx, query,
+		doc.ID.String(), doc.UserID.String(), doc.IDType, doc.IDNumber, doc.FrontObjectKey, doc.BackObjectKey,
+	).Scan(&doc.SubmittedAt)
+	return err
+}
+
+func (r *UserRepository) GetKYCDocument(ctx context.Context, userID uuid.UUID) (*user.KYCDocument, error) {
+	query := `
+		SELECT id, user_id, id_type, id_number, front_object_key, back_object_key, submitted_at
+		FROM kyc_documents
+		WHERE user_id = $1
+		ORDER BY submitted_at DESC
+		LIMIT 1
+	`
+	var doc user.KYCDocument
+	var id, uid string
+	var backKey sql.NullString
+	if err := r.db.QueryRowContext(ctx, query, userID.String()).Scan(
+		&id, &uid, &doc.IDType, &doc.IDNumber, &doc.FrontObjectKey, &backKey, &doc.SubmittedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("no kyc document found")
+		}
+		return nil, err
+	}
+	doc.ID = uuid.MustParse(id)
+	doc.UserID = uuid.MustParse(uid)
+	if backKey.Valid {
+		doc.BackObjectKey = &backKey.String
+	}
+	return &doc, nil
+}
+
+func (r *UserRepository) UpdateKYCStatus(ctx context.Context, userID uuid.UUID, status user.KYCStatus, reason *string, ts *time.Time) error {
+	var query string
+	var err error
+	if status == user.KYCStatusPending {
+		query = `UPDATE users SET kyc_status = $1, kyc_submitted_at = $2, kyc_rejection_reason = NULL, kyc_reviewed_at = NULL, updated_at = NOW() WHERE id = $3`
+		_, err = r.db.ExecContext(ctx, query, string(status), ts, userID.String())
+	} else {
+		query = `UPDATE users SET kyc_status = $1, kyc_reviewed_at = $2, kyc_rejection_reason = $3, updated_at = NOW() WHERE id = $4`
+		_, err = r.db.ExecContext(ctx, query, string(status), ts, reason, userID.String())
+	}
+	return err
 }
 
 func mapUserError(err error) error {

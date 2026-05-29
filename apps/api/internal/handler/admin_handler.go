@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	admindomain "github.com/suncrestlabs/nester/apps/api/internal/domain/admin"
+	"github.com/suncrestlabs/nester/apps/api/internal/domain/user"
 	"github.com/suncrestlabs/nester/apps/api/internal/domain/vault"
 	"github.com/suncrestlabs/nester/apps/api/internal/service"
 	logpkg "github.com/suncrestlabs/nester/apps/api/pkg/logger"
@@ -47,11 +48,12 @@ func (noopEventSyncer) SyncEvents(_ context.Context) (int, error) { return 0, ni
 
 type AdminHandler struct {
 	service     adminService
+	userService *service.UserService
 	eventSyncer EventSyncer
 }
 
-func NewAdminHandler(svc adminService) *AdminHandler {
-	return &AdminHandler{service: svc, eventSyncer: noopEventSyncer{}}
+func NewAdminHandler(svc adminService, userSvc *service.UserService) *AdminHandler {
+	return &AdminHandler{service: svc, userService: userSvc, eventSyncer: noopEventSyncer{}}
 }
 
 // SetEventSyncer wires a real EventSyncer.  Call this from main after the
@@ -70,6 +72,7 @@ func (h *AdminHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/admin/users", h.listUsers)
 	mux.HandleFunc("GET /api/v1/admin/health", h.getDetailedHealth)
 	mux.HandleFunc("POST /api/v1/admin/sync-events", h.syncEvents)
+	mux.HandleFunc("PATCH /api/v1/admin/users/{id}/kyc", h.reviewUserKYC)
 }
 
 // syncEvents handles POST /api/v1/admin/sync-events
@@ -91,6 +94,53 @@ func (h *AdminHandler) syncEvents(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, http.StatusOK, response.OK(map[string]any{
 		"processed": processed,
 	}))
+}
+
+func (h *AdminHandler) reviewUserKYC(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	userID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("invalid user ID"))
+		return
+	}
+
+	var req struct {
+		Status          string `json:"status"`
+		RejectionReason string `json:"rejection_reason"`
+	}
+	// Note: decodeJSON is not available in AdminHandler, we'll parse it manually
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("invalid request body"))
+		return
+	}
+
+	if req.Status != "verified" && req.Status != "rejected" {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("status must be verified or rejected"))
+		return
+	}
+
+	var reason *string
+	if req.Status == "rejected" {
+		if req.RejectionReason == "" {
+			response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("rejection_reason is required when rejecting"))
+			return
+		}
+		reason = &req.RejectionReason
+	}
+
+	var kycStatus user.KYCStatus
+	if req.Status == "verified" {
+		kycStatus = user.KYCStatusVerified
+	} else {
+		kycStatus = user.KYCStatusRejected
+	}
+
+	if err := h.userService.UpdateKYCStatus(r.Context(), userID, kycStatus, reason); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	response.WriteJSON(w, http.StatusOK, response.OK(map[string]string{"status": string(kycStatus)}))
 }
 
 func (h *AdminHandler) getDashboard(w http.ResponseWriter, r *http.Request) {

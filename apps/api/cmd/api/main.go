@@ -105,13 +105,13 @@ func run() error {
 	transactionService.SetBalanceApplier(vaultRepository)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	settlementRepository := postgres.NewSettlementRepository(db)
-	settlementService := service.NewSettlementService(settlementRepository)
-	settlementHandler := handler.NewSettlementHandler(settlementService)
-
 	userRepository := postgres.NewUserRepository(db)
 	userService := service.NewUserService(userRepository)
 	userHandler := handler.NewUserHandler(userService)
+
+	settlementRepository := postgres.NewSettlementRepository(db)
+	settlementService := service.NewSettlementService(settlementRepository)
+	settlementHandler := handler.NewSettlementHandler(settlementService, userService)
 
 	adminRepository := postgres.NewAdminRepository(db)
 
@@ -136,7 +136,7 @@ func run() error {
 		cfg.Stellar().HorizonURL(),
 		cfg.SettlementProviderURL(),
 	)
-	adminHandler := handler.NewAdminHandler(adminService)
+	adminHandler := handler.NewAdminHandler(adminService, userService)
 	adminHandler.SetEventSyncer(&stellarpkg.EventSyncer{
 		DB:     db,
 		RPCURL: cfg.Stellar().RPCURL(),

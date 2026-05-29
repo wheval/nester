@@ -172,7 +172,7 @@ func TestAdminHandlerListPauseVerifyFlow(t *testing.T) {
 	vaultID := uuid.New()
 	svc := newAdminHandlerStubService(vaultID)
 
-	h := NewAdminHandler(svc)
+	h := NewAdminHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -229,7 +229,7 @@ func TestAdminHandlerListPauseVerifyFlow(t *testing.T) {
 
 func TestAdminHandlerDateFilterValidation(t *testing.T) {
 	vaultID := uuid.New()
-	h := NewAdminHandler(newAdminHandlerStubService(vaultID))
+	h := NewAdminHandler(newAdminHandlerStubService(vaultID), nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -250,7 +250,7 @@ func TestAdminHandlerDateFilterValidation(t *testing.T) {
 func TestAdminHandlerAuthListPauseVerify(t *testing.T) {
 	vaultID := uuid.New()
 	svc := newAdminHandlerStubService(vaultID)
-	h := NewAdminHandler(svc)
+	h := NewAdminHandler(svc, nil)
 
 	mux := http.NewServeMux()
 	h.Register(mux)

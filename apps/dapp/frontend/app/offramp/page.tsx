@@ -12,6 +12,8 @@ import { z } from "zod/v4";
 import { validateAmount, validateBankAccount } from "@/lib/validation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { KYCStatusBadge, type KYCStatus } from "@/components/kyc/KYCSection";
+import Link from "next/link";
 import {
     ChevronDown,
     ArrowDownUp,
@@ -116,6 +118,9 @@ export default function OfframpPage() {
     const { isConnected } = useWallet();
     const { addNotification } = useNotifications();
     const router = useRouter();
+
+    // In a real app, this would come from the user's KYC state loaded via API
+    const kycStatus: KYCStatus = "unverified";
 
     const {
         handleSubmit,
@@ -270,6 +275,34 @@ export default function OfframpPage() {
     return (
         <AppShell>
             <div className="mx-auto max-w-xl">
+                {/* KYC Banner for unverified users */}
+                {kycStatus !== "verified" && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3"
+                    >
+                        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm text-amber-800">
+                                Identity verification required for offramp
+                            </p>
+                            <p className="text-xs text-amber-600/80 mt-0.5">
+                                Complete KYC to unlock fiat withdrawals.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <KYCStatusBadge status={kycStatus} />
+                            <Link
+                                href="/settings?tab=verification"
+                                className="text-xs font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                            >
+                                Verify now
+                            </Link>
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Header */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
