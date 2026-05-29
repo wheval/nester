@@ -1017,3 +1017,213 @@ fn process_emergency_queue_decrements_liquid_reserved() {
         "collect_fees should transfer fees once LiquidReserved is decremented after queue processing"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Circuit breaker boundary tests — Issue #508
+// ---------------------------------------------------------------------------
+
+/// Withdraw while paused must be rejected (require_active fires before any
+/// other logic, so the vault cannot be drained during an incident).
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_withdraw_when_paused() {
+    let (_env, admin, token, vault, _treasury) = setup();
+    let user = Address::generate(&_env);
+    mint(&token, &user, 500 * XLM);
+
+    vault.deposit(&user, &(500 * XLM), &0);
+    vault.pause(&admin);
+
+    vault.withdraw(&user, &(500 * XLM), &0);
+}
+
+/// Unpausing the vault restores normal deposit functionality.
+#[test]
+fn test_unpause_resumes_deposits() {
+    let (_env, admin, token, vault, _treasury) = setup();
+    let user = Address::generate(&_env);
+    mint(&token, &user, 200 * XLM);
+
+    vault.pause(&admin);
+    assert!(vault.is_paused());
+
+    vault.unpause(&admin);
+    assert!(!vault.is_paused());
+
+    // Deposit should now succeed without panicking.
+    let shares = vault.deposit(&user, &(200 * XLM), &0);
+    assert_eq!(shares, 200 * XLM);
+}
+
+/// Rebalance is blocked when the vault is paused — no funds should move
+/// during a circuit-breaker or manual pause event.
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_rebalance_rejected_when_paused() {
+    let (_env, admin, _token, vault, _treasury) = setup();
+
+    vault.pause(&admin);
+    // require_active fires before the strategy or cooldown checks.
+    vault.rebalance(&admin);
+}
+
+// ---------------------------------------------------------------------------
+// Vault token transfer timestamp sync — Issue #504
+// ---------------------------------------------------------------------------
+
+/// Receiving vault shares via transfer should reset the lock timer so the
+/// recipient cannot immediately withdraw fee-free by inheriting an old timestamp.
+///
+/// Performance and management fees are zeroed so this test isolates only the
+/// early-withdrawal fee behaviour described in issue #504.
+#[test]
+fn test_transfer_recipient_charged_early_withdrawal_fee() {
+    let (env, admin, token, vault, _treasury) = setup();
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    mint(&token, &alice, 1_000 * XLM);
+
+    // Zero out performance/management fees so only early-withdrawal fee applies.
+    let mut fee_config: FeeConfig = vault.get_fee_config();
+    fee_config.performance_fee_bps = 0;
+    fee_config.management_fee_bps = 0;
+    vault.set_fee_config(&admin, &fee_config);
+
+    // Alice deposits and waits past the lock period.
+    vault.deposit(&alice, &(1_000 * XLM), &0);
+    advance_time(&env, 2 * DAY); // Alice is now past min-lock
+
+    // Alice transfers all her vault shares to Bob.
+    let vault_token_addr = vault.get_vault_token();
+    let vt_client = VaultTokenContractClient::new(&env, &vault_token_addr);
+    let alice_shares = vt_client.balance(&alice);
+    vt_client.transfer(&alice, &bob, &alice_shares);
+
+    // Bob's deposit timestamp was just reset to now by the transfer.
+    // Withdrawing immediately should trigger the early-withdrawal fee.
+    let bob_before = token::Client::new(&env, &token.address).balance(&bob);
+    vault.withdraw(&bob, &alice_shares, &0);
+    let bob_after = token::Client::new(&env, &token.address).balance(&bob);
+
+    let received = bob_after - bob_before;
+    let gross = 1_000 * XLM; // no yield was added
+    let fee = gross * EARLY_FEE_BPS / BPS_DENOM;
+
+    assert!(received < gross, "recipient should pay early withdrawal fee after transfer");
+    assert_eq!(received, gross - fee, "early fee should be exactly 0.1% of gross");
+}
+
+/// Transferring shares to an existing holder should update that holder's
+/// deposit timestamp to now, ensuring the lock period restarts.
+///
+/// Performance and management fees are zeroed so this test isolates only the
+/// early-withdrawal fee behaviour described in issue #504.
+#[test]
+fn test_transfer_updates_existing_holder_timestamp() {
+    let (env, admin, token, vault, _treasury) = setup();
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    mint(&token, &alice, 500 * XLM);
+    mint(&token, &bob, 500 * XLM);
+
+    // Zero out performance/management fees so only early-withdrawal fee applies.
+    let mut fee_config: FeeConfig = vault.get_fee_config();
+    fee_config.performance_fee_bps = 0;
+    fee_config.management_fee_bps = 0;
+    vault.set_fee_config(&admin, &fee_config);
+
+    // Both users deposit.
+    vault.deposit(&alice, &(500 * XLM), &0);
+    vault.deposit(&bob, &(500 * XLM), &0);
+
+    // Advance past the lock period for both users.
+    advance_time(&env, 2 * DAY);
+
+    // Alice transfers all her shares to Bob — Bob's timestamp resets to now.
+    let vault_token_addr = vault.get_vault_token();
+    let vt_client = VaultTokenContractClient::new(&env, &vault_token_addr);
+    vt_client.transfer(&alice, &bob, &(500 * XLM));
+
+    // Bob now has 1000 shares with a freshly reset lock timer.
+    // Withdrawing immediately should charge the early fee on the full amount.
+    let bob_shares = vt_client.balance(&bob); // 1000 * XLM
+    let bob_before = token::Client::new(&env, &token.address).balance(&bob);
+    vault.withdraw(&bob, &bob_shares, &0);
+    let bob_after = token::Client::new(&env, &token.address).balance(&bob);
+
+    let gross = 1_000 * XLM; // 500 own + 500 received, 1:1 share price, no yield
+    let fee = gross * EARLY_FEE_BPS / BPS_DENOM;
+    assert_eq!(
+        bob_after - bob_before,
+        gross - fee,
+        "existing holder timestamp must be updated on transfer"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Token address immutability — Issue #502
+// ---------------------------------------------------------------------------
+
+/// The token address stored in the vault is set once at initialization and
+/// has no admin setter.  This test documents that guarantee by verifying the
+/// address is stable across vault operations.
+#[test]
+fn test_token_address_immutable_after_init() {
+    let (env, _admin, token, vault, _treasury) = setup();
+
+    let token_at_init = vault.get_token();
+    assert_eq!(token_at_init, token.address, "token address must match what was passed to initialize");
+
+    // Perform vault operations that exercise admin paths.
+    let user = Address::generate(&env);
+    mint(&token, &user, 100 * XLM);
+    vault.deposit(&user, &(100 * XLM), &0);
+    advance_time(&env, DAY + 1);
+    vault.withdraw(&user, &(100 * XLM), &0);
+
+    // Token address must be unchanged after all operations.
+    assert_eq!(
+        vault.get_token(),
+        token_at_init,
+        "token address must not change after initialization"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// pending_yield subtracts accrued management fees — Issue #501
+// ---------------------------------------------------------------------------
+
+/// pending_yield() must return net yield (gross minus accrued management fee)
+/// so the front-end does not overstate available earnings.
+#[test]
+fn pending_yield_subtracts_accrued_management_fees() {
+    let (env, _admin, token, vault, _treasury) = setup();
+    let user = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    mint(&token, &user, 1_000 * XLM);
+    mint(&token, &user2, XLM);
+
+    vault.deposit(&user, &(1_000 * XLM), &0);
+
+    // Advance 1 year so a significant management fee accrues.
+    advance_time(&env, 365 * DAY);
+
+    // Trigger fee accrual via a second deposit (accrue_management_fee is called
+    // inside deposit).
+    vault.deposit(&user2, &XLM, &0);
+
+    let accrued = vault.get_accrued_fees();
+    assert!(accrued > 0, "management fee should have accrued over 1 year");
+
+    // Simulate external yield arriving at the vault contract address.
+    let yield_amount = 200 * XLM;
+    mint(&token, &vault.address, yield_amount);
+
+    // pending_yield must equal gross yield minus accrued management fees.
+    let pending = vault.pending_yield();
+    assert_eq!(
+        pending,
+        yield_amount.saturating_sub(accrued),
+        "pending_yield must return net yield after management fee deduction"
+    );
+}
