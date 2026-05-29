@@ -98,6 +98,9 @@ func run() error {
 	vaultService := service.NewVaultService(vaultRepository)
 	vaultHandler := handler.NewVaultHandler(vaultService)
 
+	portfolioService := service.NewPortfolioService(vaultRepository)
+	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
+
 	transactionRepository := postgres.NewTransactionRepository(db)
 	transactionService := service.NewTransactionService(transactionRepository, cfg.Stellar().HorizonURL())
 	// Balance is moved only after a deposit/withdrawal is confirmed on-chain
@@ -238,6 +241,7 @@ func run() error {
 		buildVersion: version,
 	}))
 	vaultHandler.Register(mux)
+	portfolioHandler.Register(mux)
 	transactionHandler.Register(mux)
 	settlementHandler.Register(mux)
 	userHandler.Register(mux)
