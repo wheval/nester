@@ -54,6 +54,8 @@ jobs:
               - 'go.sum'
             contracts:
               - 'packages/contracts/**'
+              - 'scripts/contract-audit.sh'
+              - '.github/workflows/contract-audit.yml'
 
   website:
     name: Website (Next.js)

@@ -25,6 +25,8 @@ type Config struct {
 	log                   LogConfig
 	allowedOrigins        []string
 	performance           PerformanceConfig
+	tvl                   TVLConfig
+	apyRefresh            APYRefreshConfig
 	startup               StartupConfig
 	bank                  BankConfig
 	transactionPoller     TransactionPollerConfig
@@ -50,6 +52,17 @@ type PerformanceConfig struct {
 	snapshotInterval time.Duration
 }
 
+// TVLConfig governs the background TVL snapshot worker.
+type TVLConfig struct {
+	refreshInterval time.Duration
+}
+
+// APYRefreshConfig governs polling yield_registry for on-chain APY updates.
+type APYRefreshConfig struct {
+	refreshInterval       time.Duration
+	broadcastThresholdBPS int
+}
+
 type ServerConfig struct {
 	host              string
 	port              int
@@ -68,11 +81,12 @@ type DatabaseConfig struct {
 }
 
 type StellarConfig struct {
-	networkPassphrase string
-	rpcURL            string
-	horizonURL        string
-	operatorSecret    string
-	stellarUSDCIssuer string
+	networkPassphrase     string
+	rpcURL                string
+	horizonURL            string
+	operatorSecret        string
+	stellarUSDCIssuer     string
+	yieldRegistryContract string
 }
 
 type AuthConfig struct {
@@ -138,11 +152,12 @@ func Load() (*Config, error) {
 			connectionTimeout: loader.durationDefault("DATABASE_CONNECTION_TIMEOUT", 5*time.Second),
 		},
 		stellar: StellarConfig{
-			networkPassphrase: loader.requiredString("STELLAR_NETWORK_PASSPHRASE"),
-			rpcURL:            loader.requiredURL("STELLAR_RPC_URL"),
-			horizonURL:        loader.requiredURL("STELLAR_HORIZON_URL"),
-			operatorSecret:    loader.stringDefault("STELLAR_OPERATOR_SECRET", ""),
-			stellarUSDCIssuer: loader.stringDefault("STELLAR_USDC_ISSUER", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+			networkPassphrase:     loader.requiredString("STELLAR_NETWORK_PASSPHRASE"),
+			rpcURL:                loader.requiredURL("STELLAR_RPC_URL"),
+			horizonURL:            loader.requiredURL("STELLAR_HORIZON_URL"),
+			operatorSecret:        loader.stringDefault("STELLAR_OPERATOR_SECRET", ""),
+			stellarUSDCIssuer:     loader.stringDefault("STELLAR_USDC_ISSUER", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+			yieldRegistryContract: loader.stringDefault("YIELD_REGISTRY_CONTRACT", ""),
 		},
 		redis: RedisConfig{
 			addr: loader.stringDefault("REDIS_ADDR", ""),
@@ -168,6 +183,13 @@ func Load() (*Config, error) {
 		allowedOrigins: loader.stringSliceDefault("ALLOWED_ORIGINS", nil),
 		performance: PerformanceConfig{
 			snapshotInterval: loader.durationDefault("PERFORMANCE_SNAPSHOT_INTERVAL", 1*time.Hour),
+		},
+		tvl: TVLConfig{
+			refreshInterval: loader.durationDefault("TVL_REFRESH_INTERVAL", 15*time.Minute),
+		},
+		apyRefresh: APYRefreshConfig{
+			refreshInterval:       loader.durationDefault("APY_REFRESH_INTERVAL", 5*time.Minute),
+			broadcastThresholdBPS: loader.intDefault("APY_BROADCAST_THRESHOLD", 50),
 		},
 		startup: StartupConfig{
 			enableAutoMigrate: loader.boolDefault("RUN_MIGRATIONS", false),
@@ -256,6 +278,26 @@ func (s StartupConfig) DependencyTimeout() time.Duration {
 
 func (p PerformanceConfig) SnapshotInterval() time.Duration {
 	return p.snapshotInterval
+}
+
+func (c Config) TVL() TVLConfig {
+	return c.tvl
+}
+
+func (t TVLConfig) RefreshInterval() time.Duration {
+	return t.refreshInterval
+}
+
+func (c Config) APYRefresh() APYRefreshConfig {
+	return c.apyRefresh
+}
+
+func (a APYRefreshConfig) RefreshInterval() time.Duration {
+	return a.refreshInterval
+}
+
+func (a APYRefreshConfig) BroadcastThresholdBPS() int {
+	return a.broadcastThresholdBPS
 }
 
 // AllowedOrigins returns the list of origins permitted to make cross-origin
@@ -397,6 +439,18 @@ func (c *Config) validate(loader *envLoader) {
 		loader.addError("PERFORMANCE_SNAPSHOT_INTERVAL must be greater than 0")
 	}
 
+	if c.tvl.refreshInterval <= 0 {
+		loader.addError("TVL_REFRESH_INTERVAL must be greater than 0")
+	}
+
+	if c.apyRefresh.refreshInterval <= 0 {
+		loader.addError("APY_REFRESH_INTERVAL must be greater than 0")
+	}
+
+	if c.apyRefresh.broadcastThresholdBPS < 0 {
+		loader.addError("APY_BROADCAST_THRESHOLD must not be negative")
+	}
+
 	if c.transactionPoller.interval <= 0 {
 		loader.addError("TX_POLLER_INTERVAL must be greater than 0")
 	}
@@ -497,6 +551,10 @@ func (s StellarConfig) HorizonURL() string {
 
 func (s StellarConfig) OperatorSecret() string {
 	return s.operatorSecret
+}
+
+func (s StellarConfig) YieldRegistryContract() string {
+	return s.yieldRegistryContract
 }
 
 func (l LogConfig) Level() string {
