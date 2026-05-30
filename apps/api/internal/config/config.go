@@ -74,6 +74,7 @@ type StellarConfig struct {
 	horizonURL                string
 	operatorSecret            string
 	stellarUSDCIssuer         string
+	harvestDefaultCompound    bool
 	withdrawalSlippageBps     int
 	allocationStrategyAddress string
 }
@@ -150,6 +151,7 @@ func Load() (*Config, error) {
 			horizonURL:                loader.requiredURL("STELLAR_HORIZON_URL"),
 			operatorSecret:            loader.stringDefault("STELLAR_OPERATOR_SECRET", ""),
 			stellarUSDCIssuer:         loader.stringDefault("STELLAR_USDC_ISSUER", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+			harvestDefaultCompound:    loader.boolDefault("HARVEST_DEFAULT_COMPOUND", true),
 			withdrawalSlippageBps:     loader.intDefault("WITHDRAWAL_SLIPPAGE_BPS", 50),
 			allocationStrategyAddress: loader.stringDefault("STELLAR_ALLOCATION_STRATEGY_ADDRESS", ""),
 		},
@@ -521,6 +523,10 @@ func (s StellarConfig) HorizonURL() string {
 
 func (s StellarConfig) OperatorSecret() string {
 	return s.operatorSecret
+}
+
+func (s StellarConfig) HarvestDefaultCompound() bool {
+	return s.harvestDefaultCompound
 }
 
 func (s StellarConfig) WithdrawalSlippageBps() int {

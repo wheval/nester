@@ -183,7 +183,7 @@ func TestResolveHandler_Returns400WhenBankCodeMissing(t *testing.T) {
 	}
 }
 
-func TestResolveHandler_Returns422WhenAccountNotFound(t *testing.T) {
+func TestResolveHandler_Returns404WhenAccountNotFound(t *testing.T) {
 	primary := &stubResolver{resolveErr: bank.ErrAccountNotFound}
 	fallback := &stubResolver{resolveErr: bank.ErrAccountNotFound}
 	h := newTestHandler(primary, fallback)

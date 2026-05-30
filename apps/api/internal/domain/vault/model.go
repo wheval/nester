@@ -19,19 +19,20 @@ const (
 )
 
 var (
-	ErrVaultNotFound         = errors.New("vault not found")
-	ErrUserNotFound          = errors.New("user not found")
-	ErrInvalidVault          = errors.New("invalid vault input")
-	ErrInvalidAmount         = errors.New("amount must be greater than zero")
-	ErrInvalidAllocation     = errors.New("invalid allocation input")
-	ErrInvalidPrecision      = errors.New("decimal precision exceeds supported scale")
-	ErrInvalidTransition     = errors.New("invalid vault status transition")
-	ErrVaultClosed           = errors.New("vault is closed")
-	ErrVaultNotActive        = errors.New("vault is not active")
-	ErrInsufficientBalance   = errors.New("vault balance must be zero before closing")
-	ErrAllocationNotFound    = errors.New("allocation not found")
-	ErrAllocationHasBalance  = errors.New("allocation has non-zero balance; set force=true to remove")
-	ErrDuplicateProtocol     = errors.New("protocol already allocated")
+	ErrVaultNotFound        = errors.New("vault not found")
+	ErrUserNotFound         = errors.New("user not found")
+	ErrInvalidVault         = errors.New("invalid vault input")
+	ErrInvalidAmount        = errors.New("amount must be greater than zero")
+	ErrInvalidAllocation    = errors.New("invalid allocation input")
+	ErrInvalidPrecision     = errors.New("decimal precision exceeds supported scale")
+	ErrInvalidTransition    = errors.New("invalid vault status transition")
+	ErrVaultClosed          = errors.New("vault is closed")
+	ErrVaultNotActive       = errors.New("vault is not active")
+	ErrInsufficientBalance  = errors.New("vault balance must be zero before closing")
+	ErrVaultForbidden       = errors.New("vault does not belong to caller")
+	ErrAllocationNotFound   = errors.New("allocation not found")
+	ErrAllocationHasBalance = errors.New("allocation has non-zero balance; set force=true to remove")
+	ErrDuplicateProtocol    = errors.New("protocol already allocated")
 )
 
 const (
@@ -69,11 +70,22 @@ type Allocation struct {
 
 // VaultTransaction represents a single deposit or withdrawal event recorded in
 // the vault_transactions table.
+// HarvestRecordInput captures ledger updates after a successful harvest.
+type HarvestRecordInput struct {
+	VaultID              uuid.UUID
+	UserID               uuid.UUID
+	NetYield             decimal.Decimal
+	PerformanceFee       decimal.Decimal
+	Compounded           bool
+	NewSharesMinted      *decimal.Decimal
+	TransactionHash      string
+}
+
 type VaultTransaction struct {
 	ID                   uuid.UUID        `json:"id"`
 	VaultID              uuid.UUID        `json:"vault_id"`
 	UserID               *uuid.UUID       `json:"user_id,omitempty"`
-	Type                 string           `json:"type"` // "deposit" | "withdrawal"
+	Type                 string           `json:"type"` // "deposit" | "withdrawal" | "harvest"
 	Amount               decimal.Decimal  `json:"amount"`
 	TransactionHash      string           `json:"transaction_hash,omitempty"`
 	SharesMintedOrBurned *decimal.Decimal `json:"shares_minted_or_burned,omitempty"`
@@ -92,6 +104,7 @@ type Repository interface {
 	ReplaceAllocations(ctx context.Context, vaultID uuid.UUID, allocations []Allocation) error
 	UpdateVault(ctx context.Context, id uuid.UUID, contractAddress string, status VaultStatus) error
 	RecordWithdrawal(ctx context.Context, vaultID uuid.UUID, record TransactionRecord) error
+	RecordHarvest(ctx context.Context, input HarvestRecordInput) error
 	SoftDeleteVault(ctx context.Context, id uuid.UUID) error
 	ListDeposits(ctx context.Context, vaultID uuid.UUID) ([]VaultTransaction, error)
 	ListUserVaultTransactions(ctx context.Context, userID uuid.UUID, vaultID uuid.UUID) ([]VaultTransaction, error)

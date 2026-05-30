@@ -82,6 +82,9 @@ func (r *allocationVaultRepository) UpdateVault(context.Context, uuid.UUID, stri
 func (r *allocationVaultRepository) RecordWithdrawal(context.Context, uuid.UUID, vault.TransactionRecord) error {
 	return nil
 }
+func (r *allocationVaultRepository) RecordHarvest(context.Context, vault.HarvestRecordInput) error {
+	return nil
+}
 func (r *allocationVaultRepository) SoftDeleteVault(context.Context, uuid.UUID) error {
 	return nil
 }

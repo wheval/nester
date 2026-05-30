@@ -87,3 +87,12 @@ func (s *SorobanVaultChainInvoker) WithdrawFromVault(
 	minAssetsOut := stellar.ComputeMinAssetsOut(previewNet, bps)
 	return s.invoker.InvokeWithI128Pair(ctx, contractAddress, "withdraw", sharesStroops, minAssetsOut)
 }
+
+// HarvestVault invokes vault.harvest(user, compound) for the given Stellar account.
+func (s *SorobanVaultChainInvoker) HarvestVault(
+	ctx context.Context,
+	contractAddress, userAddress string,
+	compound bool,
+) (string, error) {
+	return s.invoker.InvokeWithAddressAndBool(ctx, contractAddress, "harvest", userAddress, compound)
+}
