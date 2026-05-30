@@ -117,6 +117,9 @@ func (rebalanceVaultRepo) UpdateVault(context.Context, uuid.UUID, string, vault.
 func (rebalanceVaultRepo) RecordWithdrawal(context.Context, uuid.UUID, vault.TransactionRecord) error {
 	return nil
 }
+func (rebalanceVaultRepo) RecordHarvest(context.Context, vault.HarvestRecordInput) error {
+	return nil
+}
 func (rebalanceVaultRepo) SoftDeleteVault(context.Context, uuid.UUID) error { return nil }
 func (rebalanceVaultRepo) ListDeposits(context.Context, uuid.UUID) ([]vault.VaultTransaction, error) {
 	return nil, nil

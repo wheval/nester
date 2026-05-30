@@ -183,7 +183,7 @@ func TestResolveHandler_Returns400WhenBankCodeMissing(t *testing.T) {
 	}
 }
 
-func TestResolveHandler_Returns422WhenAccountNotFound(t *testing.T) {
+func TestResolveHandler_Returns404WhenAccountNotFound(t *testing.T) {
 	primary := &stubResolver{resolveErr: bank.ErrAccountNotFound}
 	fallback := &stubResolver{resolveErr: bank.ErrAccountNotFound}
 	h := newTestHandler(primary, fallback)
@@ -196,8 +196,8 @@ func TestResolveHandler_Returns422WhenAccountNotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422, got %d", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
 	}
 
 	var resp map[string]any
