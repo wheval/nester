@@ -30,6 +30,21 @@ func (s *SorobanVaultChainInvoker) UnpauseVault(ctx context.Context, contractAdd
 	return s.invoker.InvokeVoidFunction(ctx, contractAddress, "unpause")
 }
 
+func (s *SorobanVaultChainInvoker) SetAllocationWeights(
+	ctx context.Context,
+	strategyContractAddress string,
+	weights []AllocationWeightEntry,
+) error {
+	stellarWeights := make([]stellar.AllocationWeightEntry, len(weights))
+	for i, w := range weights {
+		stellarWeights[i] = stellar.AllocationWeightEntry{
+			Protocol:  w.Protocol,
+			WeightBps: w.WeightBps,
+		}
+	}
+	return s.invoker.InvokeSetWeights(ctx, strategyContractAddress, stellarWeights)
+}
+
 // DepositToVault invokes the vault contract's deposit function with the
 // operator as both caller and depositing user, passing amount and zero
 // as the minimum-shares-out slippage guard.

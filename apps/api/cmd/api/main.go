@@ -132,9 +132,12 @@ func run() error {
 
 	adminService := service.NewAdminService(
 		adminRepository,
+		vaultRepository,
 		chainInvoker,
 		cfg.Stellar().HorizonURL(),
 		cfg.SettlementProviderURL(),
+		cfg.Stellar().AllocationStrategyAddress(),
+		cfg.Allocation().MinWeightPercent(),
 	)
 	adminHandler := handler.NewAdminHandler(adminService)
 	adminHandler.SetEventSyncer(&stellarpkg.EventSyncer{

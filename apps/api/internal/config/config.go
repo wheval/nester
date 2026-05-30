@@ -18,6 +18,7 @@ type Config struct {
 	server                ServerConfig
 	database              DatabaseConfig
 	stellar               StellarConfig
+	allocation            AllocationConfig
 	redis                 RedisConfig
 	settlementProviderURL string
 	auth                  AuthConfig
@@ -68,11 +69,16 @@ type DatabaseConfig struct {
 }
 
 type StellarConfig struct {
-	networkPassphrase string
-	rpcURL            string
-	horizonURL        string
-	operatorSecret    string
-	stellarUSDCIssuer string
+	networkPassphrase         string
+	rpcURL                    string
+	horizonURL                string
+	operatorSecret            string
+	stellarUSDCIssuer         string
+	allocationStrategyAddress string
+}
+
+type AllocationConfig struct {
+	minWeightPercent int
 }
 
 type AuthConfig struct {
@@ -138,11 +144,15 @@ func Load() (*Config, error) {
 			connectionTimeout: loader.durationDefault("DATABASE_CONNECTION_TIMEOUT", 5*time.Second),
 		},
 		stellar: StellarConfig{
-			networkPassphrase: loader.requiredString("STELLAR_NETWORK_PASSPHRASE"),
-			rpcURL:            loader.requiredURL("STELLAR_RPC_URL"),
-			horizonURL:        loader.requiredURL("STELLAR_HORIZON_URL"),
-			operatorSecret:    loader.stringDefault("STELLAR_OPERATOR_SECRET", ""),
-			stellarUSDCIssuer: loader.stringDefault("STELLAR_USDC_ISSUER", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+			networkPassphrase:         loader.requiredString("STELLAR_NETWORK_PASSPHRASE"),
+			rpcURL:                    loader.requiredURL("STELLAR_RPC_URL"),
+			horizonURL:                loader.requiredURL("STELLAR_HORIZON_URL"),
+			operatorSecret:            loader.stringDefault("STELLAR_OPERATOR_SECRET", ""),
+			stellarUSDCIssuer:         loader.stringDefault("STELLAR_USDC_ISSUER", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
+			allocationStrategyAddress: loader.stringDefault("STELLAR_ALLOCATION_STRATEGY_ADDRESS", ""),
+		},
+		allocation: AllocationConfig{
+			minWeightPercent: loader.intDefault("MIN_ALLOCATION_WEIGHT", 5),
 		},
 		redis: RedisConfig{
 			addr: loader.stringDefault("REDIS_ADDR", ""),
@@ -208,6 +218,10 @@ func (c Config) Database() DatabaseConfig {
 
 func (c Config) Stellar() StellarConfig {
 	return c.stellar
+}
+
+func (c Config) Allocation() AllocationConfig {
+	return c.allocation
 }
 
 func (s StellarConfig) USDCIssuer() string {
@@ -405,6 +419,10 @@ func (c *Config) validate(loader *envLoader) {
 		loader.addError("TX_POLLER_MIN_AGE must not be negative")
 	}
 
+	if c.allocation.minWeightPercent < 1 || c.allocation.minWeightPercent > 100 {
+		loader.addError("MIN_ALLOCATION_WEIGHT must be between 1 and 100")
+	}
+
 	// Require at least one payment provider key in production/staging so
 	// offramp features (bank list, account resolution) work at deploy time
 	// rather than failing silently when a user first triggers them.
@@ -497,6 +515,14 @@ func (s StellarConfig) HorizonURL() string {
 
 func (s StellarConfig) OperatorSecret() string {
 	return s.operatorSecret
+}
+
+func (s StellarConfig) AllocationStrategyAddress() string {
+	return s.allocationStrategyAddress
+}
+
+func (a AllocationConfig) MinWeightPercent() int {
+	return a.minWeightPercent
 }
 
 func (l LogConfig) Level() string {

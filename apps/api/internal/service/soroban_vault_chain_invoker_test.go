@@ -98,6 +98,6 @@ func TestPauseVault_InvalidContract(t *testing.T) {
 // TestNoopVaultChainInvoker_IsDefaultWhenNilPassed ensures that NewAdminService
 // still defaults to NoopVaultChainInvoker when nil is passed.
 func TestNoopVaultChainInvoker_IsDefaultWhenNilPassed(t *testing.T) {
-	svc := service.NewAdminService(nil, nil, "", "")
+	svc := service.NewAdminService(nil, nil, nil, "", "", "", 5)
 	require.NotNil(t, svc)
 }

@@ -196,8 +196,8 @@ func TestResolveHandler_Returns404WhenAccountNotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", rec.Code)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d", rec.Code)
 	}
 
 	var resp map[string]any

@@ -411,6 +411,150 @@ func (c *ContractInvoker) InvokeWithI128Pair(ctx context.Context, contractAddres
 	return c.waitForTx(ctx, hash)
 }
 
+// AllocationWeightEntry is a single protocol weight for on-chain set_weights.
+type AllocationWeightEntry struct {
+	Protocol  string
+	WeightBps uint32
+}
+
+// InvokeSetWeights calls allocation_strategy.set_weights(caller, weights).
+func (c *ContractInvoker) InvokeSetWeights(ctx context.Context, contractAddress string, weights []AllocationWeightEntry) error {
+	contractScAddr, err := contractAddressToXDR(contractAddress)
+	if err != nil {
+		return err
+	}
+
+	callerScAddr, err := accountAddressToXDR(c.kp.Address())
+	if err != nil {
+		return err
+	}
+
+	weightVecItems := make([]xdr.ScVal, 0, len(weights))
+	for _, w := range weights {
+		bps := xdr.Uint32(w.WeightBps)
+		sourceSym := xdr.ScSymbol(w.Protocol)
+		mapEntries := []xdr.ScMapEntry{
+			{
+				Key: xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: scSymbol("source_id")},
+				Val: xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: &sourceSym},
+			},
+			{
+				Key: xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: scSymbol("weight_bps")},
+				Val: xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &bps},
+			},
+		}
+		scMap := xdr.ScMap(mapEntries)
+		mapPtr := &scMap
+		weightVecItems = append(weightVecItems, xdr.ScVal{
+			Type: xdr.ScValTypeScvMap,
+			Map:  &mapPtr,
+		})
+	}
+	scVec := xdr.ScVec(weightVecItems)
+	vecPtr := &scVec
+
+	hostFn := xdr.HostFunction{
+		Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
+		InvokeContract: &xdr.InvokeContractArgs{
+			ContractAddress: contractScAddr,
+			FunctionName:    xdr.ScSymbol("set_weights"),
+			Args: []xdr.ScVal{
+				{Type: xdr.ScValTypeScvAddress, Address: &callerScAddr},
+				{Type: xdr.ScValTypeScvVec, Vec: &vecPtr},
+			},
+		},
+	}
+
+	return c.invokeHostFunction(ctx, hostFn)
+}
+
+func scSymbol(s string) *xdr.ScSymbol {
+	v := xdr.ScSymbol(s)
+	return &v
+}
+
+func (c *ContractInvoker) invokeHostFunction(ctx context.Context, hostFn xdr.HostFunction) error {
+	seq, err := c.getSequenceNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("get sequence number: %w", err)
+	}
+
+	sourceAccount := txnbuild.NewSimpleAccount(c.kp.Address(), seq)
+
+	tx, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
+		SourceAccount:        &sourceAccount,
+		IncrementSequenceNum: true,
+		Operations: []txnbuild.Operation{
+			&txnbuild.InvokeHostFunction{
+				HostFunction: hostFn,
+			},
+		},
+		BaseFee:       txnbuild.MinBaseFee,
+		Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(int64((5 * time.Minute).Seconds()))},
+	})
+	if err != nil {
+		return fmt.Errorf("build transaction: %w", err)
+	}
+
+	txB64, err := tx.Base64()
+	if err != nil {
+		return fmt.Errorf("encode transaction: %w", err)
+	}
+
+	simResult, err := c.simulate(ctx, txB64)
+	if err != nil {
+		return err
+	}
+
+	var sorobanData xdr.SorobanTransactionData
+	if err := xdr.SafeUnmarshalBase64(simResult.TransactionData, &sorobanData); err != nil {
+		return fmt.Errorf("decode soroban data: %w", err)
+	}
+
+	envelope := tx.ToXDR()
+	envelope.V1.Tx.Ext = xdr.TransactionExt{
+		V:           1,
+		SorobanData: &sorobanData,
+	}
+	minFee, err := strconv.ParseInt(simResult.MinResourceFee, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse simulation min resource fee %q: %w", simResult.MinResourceFee, err)
+	}
+	envelope.V1.Tx.Fee = xdr.Uint32(txnbuild.MinBaseFee + minFee)
+
+	envB64, err := xdr.MarshalBase64(envelope)
+	if err != nil {
+		return fmt.Errorf("encode patched envelope: %w", err)
+	}
+
+	generic, err := txnbuild.TransactionFromXDR(envB64)
+	if err != nil {
+		return fmt.Errorf("parse patched tx: %w", err)
+	}
+
+	inner, ok := generic.Transaction()
+	if !ok {
+		return errors.New("expected a transaction, got fee-bump")
+	}
+
+	signed, err := inner.Sign(c.networkPassphrase, c.kp)
+	if err != nil {
+		return fmt.Errorf("sign transaction: %w", err)
+	}
+
+	signedB64, err := signed.Base64()
+	if err != nil {
+		return fmt.Errorf("encode signed transaction: %w", err)
+	}
+
+	hash, err := c.send(ctx, signedB64)
+	if err != nil {
+		return err
+	}
+
+	return c.waitForTx(ctx, hash)
+}
+
 func int64ToI128ScVal(n int64) xdr.ScVal {
 	hi := xdr.Int64(0)
 	lo := xdr.Uint64(uint64(n)) // #nosec G115 -- two's complement i128 encoding; hi is set to -1 for negatives
