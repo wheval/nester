@@ -8,7 +8,11 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.dependencies.auth import verify_jwt
-from app.models.recommendation import Recommendation, VaultRecommendationRequest, VaultRecommendationResponse
+from app.models.recommendation import (
+    Recommendation,
+    VaultRecommendationRequest,
+    VaultRecommendationResponse,
+)
 from app.services.prometheus import (
     analyze_recommendation,
     get_market_sentiment,

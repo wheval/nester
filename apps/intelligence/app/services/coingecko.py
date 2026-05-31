@@ -1,8 +1,9 @@
 """CoinGecko client for live price data and market sentiment."""
+
 import json
 import logging
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
@@ -37,8 +38,10 @@ def _get_redis() -> Any:
     if _redis_client is not None:
         return _redis_client if _redis_available else None
     try:
-        from app.config import settings
         import redis as _redis
+
+        from app.config import settings
+
         _redis_client = _redis.from_url(settings.redis_url, decode_responses=True)
         _redis_client.ping()
         _redis_available = True
@@ -129,7 +132,11 @@ class CoinGeckoClient:
         if cached is not None:
             return MarketSentiment(**cached)
 
-        _neutral = MarketSentiment(signal="neutral", defi_market_cap_usd=0.0, defi_dominance_pct=0.0)
+        _neutral = MarketSentiment(
+            signal="neutral",
+            defi_market_cap_usd=0.0,
+            defi_dominance_pct=0.0,
+        )
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -161,7 +168,11 @@ class CoinGeckoClient:
             elif vol_ratio < 0.02:
                 signal = "bear"
 
-        result = {"signal": signal, "defi_market_cap_usd": market_cap, "defi_dominance_pct": dominance}
+        result = {
+            "signal": signal,
+            "defi_market_cap_usd": market_cap,
+            "defi_dominance_pct": dominance,
+        }
         _cache_set(cache_key, result, _TTL_SENTIMENT)
         return MarketSentiment(**result)
 

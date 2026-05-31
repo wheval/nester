@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { PortfolioProvider } from "@/components/portfolio-provider";
 import { WalletProvider } from "@/components/wallet-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationsToaster } from "@/components/notifications-toaster";
 import { WebSocketProvider } from "@/components/websocket-provider";
 import "./globals.css";
-
-const inter = Inter({
-    subsets: ["latin"],
-    variable: "--font-inter",
-    display: "swap",
-});
 
 export const metadata: Metadata = {
     title: "Nester | DApp",
@@ -37,10 +30,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body
-                suppressHydrationWarning
-                className={`${inter.className} ${inter.variable} antialiased`}
-            >
+            <body suppressHydrationWarning className="antialiased">
                 <A11yAudit />
                 <NetworkProvider>
                     <SettingsProvider>

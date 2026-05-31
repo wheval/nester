@@ -78,6 +78,44 @@ export default function AnalyticsPage() {
   if (error) return <div className="flex h-[600px] items-center justify-center text-red-500">{error}</div>;
   if (!analyticsData) return <div className="flex h-[600px] items-center justify-center">No data</div>;
 
+  const portfolioSnapshots = analyticsData.daily_snapshots.map((snapshot) => ({
+    date: snapshot.date,
+    total_balance_usd: snapshot.total_value_usd,
+    yield_earned_usd: snapshot.yield_usd,
+  }));
+  const allocationByVaultId = new Map(
+    analyticsData.current_allocation.map((item) => [item.vault_id, item])
+  );
+  const vaultsById = new Map(analyticsData.vaults.map((vault) => [vault.id, vault]));
+  const allocationData = analyticsData.current_allocation.map((item) => ({
+    protocol: item.vault_name,
+    allocation_pct: item.percentage,
+    balance_usd: item.value_usd,
+    apy: vaultsById.get(item.vault_id)?.apy ?? 0,
+  }));
+  const performanceData = {
+    total_yield_earned: analyticsData.performance_metrics.total_yield_usd,
+    yield_change_pct: 0,
+    best_vault_name:
+      analyticsData.vaults.reduce(
+        (best, vault) => (vault.apy > best.apy ? vault : best),
+        analyticsData.vaults[0] ?? { name: "N/A", apy: 0 }
+      ).name,
+    best_vault_apy: Math.max(0, ...analyticsData.vaults.map((vault) => vault.apy)),
+    average_apy: analyticsData.performance_metrics.average_apy,
+    total_deposited: analyticsData.daily_snapshots.at(-1)?.total_value_usd ?? 0,
+    total_withdrawn: 0,
+    net_position: analyticsData.daily_snapshots.at(-1)?.total_value_usd ?? 0,
+  };
+  const vaultComparisonData = analyticsData.vaults.map((vault) => ({
+    id: vault.id,
+    name: vault.name,
+    balance_usd: allocationByVaultId.get(vault.id)?.value_usd ?? 0,
+    apy: vault.apy,
+    yield_earned: 0,
+    lock_period_days: 0,
+  }));
+
   return (
     <div className="space-y-8 p-6">
       <div className="flex flex-wrap gap-4 mb-4">
@@ -114,19 +152,19 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Section 1: PortfolioChart */}
-      <PortfolioChart data={analyticsData.daily_snapshots} />
+      <PortfolioChart data={portfolioSnapshots} />
 
       {/* Section 2: Yield Breakdown */}
       <YieldBreakdownChart data={analyticsData.vault_monthly_yield} />
 
       {/* Section 3: Allocation Pie Chart */}
-      <AllocationPieChart data={analyticsData.current_allocation} />
+      <AllocationPieChart data={allocationData} />
 
       {/* Section 4: Performance Metrics Cards */}
-      <PerformanceMetricsCards data={analyticsData.performance_metrics} />
+      <PerformanceMetricsCards data={performanceData} />
 
       {/* Section 5: Vault Comparison */}
-      <VaultComparison vaults={analyticsData.vaults} />
+      <VaultComparison vaults={vaultComparisonData} />
 
       {/* Section 6: Benchmark Card */}
       <BenchmarkCard 

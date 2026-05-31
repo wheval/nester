@@ -139,6 +139,8 @@ export const intelligenceApi = {
     apiFetch<SavingsPlanResponse>('/intelligence/savings-plan', {
         method: 'POST',
         body: JSON.stringify(request),
+    }),
+
   recommendVault: (input: VaultRecommendationInput) =>
     apiFetch<VaultRecommendationPlan>('/recommend/vault', {
       method: 'POST',

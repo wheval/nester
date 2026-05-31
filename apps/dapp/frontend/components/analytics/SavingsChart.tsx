@@ -12,7 +12,7 @@ import {
 
 export interface ChartDataPoint {
     date: string;
-    actualBalance: number;
+    actualBalance?: number;
     projectedBalance?: number;
 }
 
@@ -72,7 +72,10 @@ export default function SavingsChart({ data }: SavingsChartProps) {
                             boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
                             fontSize: "12px"
                         }}
-                        formatter={(value: number) => [fmtUsd(value), ""]}
+                        formatter={(value) => [
+                            typeof value === "number" ? fmtUsd(value) : "",
+                            "",
+                        ]}
                         labelStyle={{ color: "rgba(0,0,0,0.4)", marginBottom: "4px" }}
                     />
                     <Area

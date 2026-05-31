@@ -2,17 +2,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RiskGaugeChart, RiskDimensionsTable } from "./risk-components";
 
-interface RiskDimension {
-  name: string;
-  score: number;
-  description: string;
-}
-
 interface RiskData {
-  score: number;
-  level: string;
-  dimensions: RiskDimension[];
-  [key: string]: string | number | RiskDimension[] | undefined;
+  overall: number;
+  tier: string;
+  concentration_risk: number;
+  protocol_risk: number;
+  yield_volatility: number;
+  liquidity_risk: number;
 }
 
 interface RiskGaugeProps {
@@ -40,7 +36,7 @@ export default function RiskGauge({ vaultId }: RiskGaugeProps) {
           }
         }
         const data = await response.json();
-        setRiskData(data);
+        setRiskData(normalizeRiskData(data));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
@@ -90,3 +86,20 @@ export default function RiskGauge({ vaultId }: RiskGaugeProps) {
   );
 }
 export { RiskGauge };
+
+function normalizeRiskData(data: any): RiskData {
+  const dimensions = Array.isArray(data?.dimensions) ? data.dimensions : [];
+  const scoreFor = (name: string) =>
+    dimensions.find((dimension: any) =>
+      String(dimension?.name ?? "").toLowerCase().includes(name)
+    )?.score ?? 0;
+
+  return {
+    overall: data?.overall ?? data?.score ?? 0,
+    tier: data?.tier ?? data?.level ?? "Unknown",
+    concentration_risk: data?.concentration_risk ?? scoreFor("concentration"),
+    protocol_risk: data?.protocol_risk ?? scoreFor("protocol"),
+    yield_volatility: data?.yield_volatility ?? scoreFor("yield"),
+    liquidity_risk: data?.liquidity_risk ?? scoreFor("liquidity"),
+  };
+}

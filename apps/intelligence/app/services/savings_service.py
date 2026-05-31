@@ -1,18 +1,23 @@
 import logging
-import math
-from typing import List, Optional, Tuple
-from app.models.savings import ScheduleEntry, MilestoneProjection, SavingsPlanResponse, SavingsPlanRequest
-from app.services.vault_context import VaultContextFetcher
+
 from app.config import settings
+from app.models.savings import (
+    MilestoneProjection,
+    SavingsPlanRequest,
+    SavingsPlanResponse,
+    ScheduleEntry,
+)
 from app.services.claude import client as anthropic_client
+from app.services.vault_context import VaultContextFetcher
 
 logger = logging.getLogger(__name__)
+
 
 class SavingsService:
     def __init__(self):
         self.fetcher = VaultContextFetcher(
             api_base_url=settings.nester_api_base_url,
-            service_api_key=settings.nester_service_api_key
+            service_api_key=settings.nester_service_api_key,
         )
 
     async def get_default_apy(self) -> float:
@@ -20,7 +25,7 @@ class SavingsService:
         rates = await self.fetcher.fetch_market_rates()
         if not rates:
             return 0.08  # Fallback to 8%
-        
+
         # Simple average of available rates
         total_apy = sum(rate.get("apy", 0) for rate in rates)
         return total_apy / len(rates)
@@ -29,12 +34,19 @@ class SavingsService:
         # 1. Determine APY
         apy = 0.0
         if request.vault_id:
-            # In a real scenario, we'd fetch specific vault APY. 
-            # For now, let's try to find it in market rates or user vaults if possible, 
+            # In a real scenario, we'd fetch specific vault APY.
+            # For now, let's try to find it in market rates or user vaults if possible,
             # or just use a placeholder if it's a mock ID.
             # For this implementation, we'll fetch market rates and pick one or use default.
             rates = await self.fetcher.fetch_market_rates()
-            vault_rate = next((r for r in rates if r.get("protocol", "").lower() == request.vault_id.lower()), None)
+            vault_rate = next(
+                (
+                    rate
+                    for rate in rates
+                    if rate.get("protocol", "").lower() == request.vault_id.lower()
+                ),
+                None,
+            )
             if vault_rate:
                 apy = vault_rate.get("apy", 0)
             else:
@@ -47,13 +59,13 @@ class SavingsService:
         # We'll use end of month for simplicity or consistent with standard calculators
         # FV = P * (((1 + r)^n - 1) / r)
         # P = FV * (r / ((1 + r)^n - 1))
-        
+
         r = apy / 12
         n = request.time_horizon_months
         fv = request.goal_usdc
 
         if r > 0:
-            required_deposit = fv * (r / ((1 + r)**n - 1))
+            required_deposit = fv * (r / ((1 + r) ** n - 1))
         else:
             required_deposit = fv / n
 
@@ -69,22 +81,28 @@ class SavingsService:
             yield_this_month = current_balance * r
             total_yield += yield_this_month
             current_balance += yield_this_month + required_deposit
-            
-            monthly_schedule.append(ScheduleEntry(
-                month=month,
-                deposit=round(required_deposit, 2),
-                expected_balance=round(current_balance, 2),
-                yield_earned=round(total_yield, 2)
-            ))
+
+            monthly_schedule.append(
+                ScheduleEntry(
+                    month=month,
+                    deposit=round(required_deposit, 2),
+                    expected_balance=round(current_balance, 2),
+                    yield_earned=round(total_yield, 2),
+                )
+            )
 
             if month % 6 == 0 or month == n:
-                milestones.append(MilestoneProjection(
-                    month=month,
-                    expected_balance=round(current_balance, 2)
-                ))
+                milestones.append(
+                    MilestoneProjection(
+                        month=month,
+                        expected_balance=round(current_balance, 2),
+                    )
+                )
 
         # 4. Generate Narrative using Claude
-        narrative = await self._generate_narrative(request, apy, required_deposit, achievable, total_yield)
+        narrative = await self._generate_narrative(
+            request, apy, required_deposit, achievable, total_yield
+        )
 
         return SavingsPlanResponse(
             achievable=achievable,
@@ -92,10 +110,17 @@ class SavingsService:
             monthly_schedule=monthly_schedule,
             total_yield_earned=round(total_yield, 2),
             narrative=narrative,
-            milestones=milestones
+            milestones=milestones,
         )
 
-    async def _generate_narrative(self, request: SavingsPlanRequest, apy: float, required_deposit: float, achievable: bool, total_yield: float) -> str:
+    async def _generate_narrative(
+        self,
+        request: SavingsPlanRequest,
+        apy: float,
+        required_deposit: float,
+        achievable: bool,
+        total_yield: float,
+    ) -> str:
         status_text = "achievable" if achievable else "NOT achievable"
         prompt = (
             "You are Prometheus, a DeFi-savvy financial advisor.\n"
@@ -106,8 +131,10 @@ class SavingsService:
             f"The goal is {status_text} within their stated contribution limit.\n"
             f"The total yield they will earn is ${total_yield:.2f}.\n\n"
             "Provide a concise, encouraging narrative (2-3 sentences) explaining the plan.\n"
-            "If it's achievable, highlight the power of compound interest and the yield they'll earn.\n"
-            "If it's NOT achievable, suggest adjusting the time horizon, increasing the monthly contribution, or seeking a higher yield vault (while mentioning risk).\n"
+            "If it's achievable, highlight the power of compound interest and the yield "
+            "they'll earn.\n"
+            "If it's NOT achievable, suggest adjusting the time horizon, increasing the monthly "
+            "contribution, or seeking a higher yield vault (while mentioning risk).\n"
             "Keep it professional yet conversational."
         )
 
@@ -115,16 +142,22 @@ class SavingsService:
             response = anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=150,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "user", "content": prompt}],
             )
             return response.content[0].text
         except Exception as e:
             logger.error(f"Error generating narrative from Claude: {e}")
             if achievable:
-                return f"At the current {apy*100:.1f}% APY, you need to deposit ${required_deposit:.2f}/month. You'll earn ${total_yield:.2f} in interest along the way!"
-            else:
-                return f"To reach your goal of ${request.goal_usdc}, you'd need to deposit ${required_deposit:.2f}/month, which is above your limit. Consider extending your timeline."
+                return (
+                    f"At the current {apy*100:.1f}% APY, you need to deposit "
+                    f"${required_deposit:.2f}/month. You'll earn ${total_yield:.2f} "
+                    "in interest along the way!"
+                )
+            return (
+                f"To reach your goal of ${request.goal_usdc}, you'd need to deposit "
+                f"${required_deposit:.2f}/month, which is above your limit. "
+                "Consider extending your timeline."
+            )
+
 
 savings_service = SavingsService()
