@@ -94,6 +94,8 @@ func run() error {
 		return err
 	}
 
+	systemStateRepository := postgres.NewSystemStateRepository(db)
+
 	vaultRepository := postgres.NewVaultRepository(db)
 	vaultService := service.NewVaultService(vaultRepository)
 	vaultService.SetHarvestDefaultCompound(cfg.Stellar().HarvestDefaultCompound())
@@ -143,9 +145,10 @@ func run() error {
 	)
 	adminHandler := handler.NewAdminHandler(adminService)
 	adminHandler.SetEventSyncer(&stellarpkg.EventSyncer{
-		DB:     db,
-		RPCURL: cfg.Stellar().RPCURL(),
-		Logger: baseLogger,
+		DB:      db,
+		SysRepo: systemStateRepository,
+		RPCURL:  cfg.Stellar().RPCURL(),
+		Logger:  baseLogger,
 	})
 
 	var challengeStore service.ChallengeStore
@@ -337,7 +340,7 @@ func run() error {
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	stellarpkg.StartEventIndexer(shutdownCtx, baseLogger, db, cfg.Stellar().RPCURL())
+	stellarpkg.StartEventIndexer(shutdownCtx, baseLogger, db, systemStateRepository, cfg.Stellar().RPCURL())
 
 	serverErr := make(chan error, 1)
 	go func() {
