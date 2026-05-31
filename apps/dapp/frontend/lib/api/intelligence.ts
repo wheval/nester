@@ -78,6 +78,16 @@ export interface PortfolioInsight {
   action?: { label: string; href: string }
 }
 
+export interface AllocationItem {
+  protocolId: string
+  weight: number
+}
+
+export interface AllocationRecommendation {
+  allocations: AllocationItem[]
+  commentary: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -153,6 +163,13 @@ export const intelligence = {
     apiFetch<AnalyzeRecommendation>('/analyze', {
       method: 'POST',
       body: JSON.stringify({ prompt }),
+    }),
+
+  /** AI-suggested allocation weights for vault creation. */
+  getAllocationRecommendation: (params: { strategy: string; protocolIds: string[] }) =>
+    apiFetch<AllocationRecommendation>('/intelligence/allocation', {
+      method: 'POST',
+      body: JSON.stringify(params),
     }),
 
   sendMessage: (userId: string, message: string): EventSource => {

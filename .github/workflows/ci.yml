@@ -137,6 +137,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test
+        run: npm run test:coverage
+
       - name: Audit JS dependencies (dapp)
         run: npm audit --audit-level=moderate
         continue-on-error: true

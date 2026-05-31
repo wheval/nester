@@ -24,7 +24,9 @@ import { useWallet } from "@/components/wallet-provider";
 import { useNetwork } from "@/hooks/useNetwork";
 import { truncateAddress, cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
+import { SiteFooter } from "@/components/site-footer";
 import { NotificationBell } from "@/components/notification-bell";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 
@@ -46,7 +48,7 @@ function Sidebar({ bannerOffset }: { bannerOffset: boolean }) {
     return (
         <aside
             className={cn(
-                "fixed left-0 bottom-0 z-40 hidden w-[240px] flex-col border-r border-black/[0.06] bg-white lg:flex",
+                "fixed left-0 bottom-0 z-40 hidden w-[240px] flex-col border-r border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#0D0E1C] lg:flex",
                 bannerOffset ? "top-10" : "top-0"
             )}
         >
@@ -59,7 +61,7 @@ function Sidebar({ bannerOffset }: { bannerOffset: boolean }) {
                     height={30}
                     className="rounded-lg"
                 />
-                <span className="text-[15px] font-semibold text-black tracking-[-0.01em]">
+                <span className="text-[15px] font-semibold text-black dark:text-white tracking-[-0.01em]">
                     Nester
                 </span>
             </Link>
@@ -128,7 +130,7 @@ function TopBar({ bannerOffset }: { bannerOffset: boolean }) {
         <>
             <header
                 className={cn(
-                    "sticky z-30 flex items-center justify-between gap-6 border-b border-black/[0.06] bg-white/80 backdrop-blur-md px-6 py-4 lg:px-10",
+                    "sticky z-30 flex items-center justify-between gap-6 border-b border-black/[0.06] dark:border-white/10 bg-white/80 dark:bg-[#0D0E1C]/90 backdrop-blur-md px-6 py-4 lg:px-10",
                     bannerOffset ? "top-10" : "top-0"
                 )}
             >
@@ -144,6 +146,7 @@ function TopBar({ bannerOffset }: { bannerOffset: boolean }) {
                 <div className="hidden lg:block flex-1" />
 
                 <div className="flex items-center gap-3">
+                    <ThemeToggle />
                     {/* Notification bell */}
                     <NotificationBell />
 
@@ -272,13 +275,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const bannerOffset = currentNetwork.id === "testnet";
 
     return (
-        <div className="min-h-screen bg-[#fafafa]">
+        <div className="min-h-screen bg-[#fafafa] dark:bg-[#0D0E1C]">
             <Sidebar bannerOffset={bannerOffset} />
             <div className="lg:ml-[240px]">
                 <TopBar bannerOffset={bannerOffset} />
                 <main className="mx-auto max-w-[1120px] px-6 pt-10 pb-8 lg:px-10 lg:pt-12 lg:pb-10">
                     {children}
                 </main>
+                <SiteFooter />
             </div>
         </div>
     );

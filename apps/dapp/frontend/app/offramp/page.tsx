@@ -276,7 +276,7 @@ export default function OfframpPage() {
         <AppShell>
             <div className="mx-auto max-w-xl">
                 {/* KYC Banner for unverified users */}
-                {kycStatus !== "verified" && (
+                {kycStatus === "unverified" && (
                     <motion.div
                         initial={{ opacity: 0, y: -8 }}
                         animate={{ opacity: 1, y: 0 }}

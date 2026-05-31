@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter } from "next/font/google";
 import { PortfolioProvider } from "@/components/portfolio-provider";
 import { WalletProvider } from "@/components/wallet-provider";
@@ -26,10 +27,28 @@ export const metadata: Metadata = {
 };
 
 import { SettingsProvider } from "@/context/settings-context";
+import { ConsentProvider } from "@/context/consent-context";
 import { OnboardingProvider } from "@/hooks/useOnboarding";
 import { NetworkProvider } from "@/context/NetworkProvider";
 import { NetworkBanner } from "@/components/network/NetworkSelector";
-import { PrometheusChatbot } from "@/components/ai/prometheusChatbot";
+import { ConsentGatedPrometheus } from "@/components/consent-gated-prometheus";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+
+const themeInitScript = `
+(function() {
+  try {
+    var key = 'nester-theme';
+    var legacy = 'nester_theme';
+    var stored = localStorage.getItem(key) || localStorage.getItem(legacy) || 'dark';
+    if (stored === 'system') stored = 'dark';
+    if (stored === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  } catch (e) {}
+})();
+`;
 
 export default function RootLayout({
     children,
@@ -38,31 +57,41 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" suppressHydrationWarning>
+            <head>
+                <Script
+                    id="theme-init"
+                    strategy="beforeInteractive"
+                    dangerouslySetInnerHTML={{ __html: themeInitScript }}
+                />
+            </head>
             <body
                 suppressHydrationWarning
                 className={`${inter.className} ${inter.variable} antialiased`}
             >
-                <ReactQueryProvider>
-                    <NetworkProvider>
-                        <SettingsProvider>
-                            <WalletProvider>
-                                <NotificationsProvider>
-                                    <OfflineBanner />
-                                    <NetworkBanner />
-                                    <PortfolioProvider>
-                                        <WebSocketProvider>
-                                            <OnboardingProvider>
-                                                {children}
-                                                <NotificationsToaster />
-                                                <PrometheusChatbot />
-                                            </OnboardingProvider>
-                                        </WebSocketProvider>
-                                    </PortfolioProvider>
-                                </NotificationsProvider>
-                            </WalletProvider>
-                        </SettingsProvider>
-                    </NetworkProvider>
-                </ReactQueryProvider>
+                <ConsentProvider>
+                    <ReactQueryProvider>
+                        <NetworkProvider>
+                            <SettingsProvider>
+                                <WalletProvider>
+                                    <NotificationsProvider>
+                                        <OfflineBanner />
+                                        <NetworkBanner />
+                                        <PortfolioProvider>
+                                            <WebSocketProvider>
+                                                <OnboardingProvider>
+                                                    {children}
+                                                    <NotificationsToaster />
+                                                    <ConsentGatedPrometheus />
+                                                    <CookieConsentBanner />
+                                                </OnboardingProvider>
+                                            </WebSocketProvider>
+                                        </PortfolioProvider>
+                                    </NotificationsProvider>
+                                </WalletProvider>
+                            </SettingsProvider>
+                        </NetworkProvider>
+                    </ReactQueryProvider>
+                </ConsentProvider>
             </body>
         </html>
     );

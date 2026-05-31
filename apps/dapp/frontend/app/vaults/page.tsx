@@ -16,6 +16,7 @@ import {
     LayoutList,
     LayoutGrid,
     Info,
+    Plus,
     Layers,
     TrendingUp,
     BarChart3,
@@ -428,12 +429,21 @@ export default function VaultsPage() {
                 <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-7"
+                    className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
                 >
-                    <h1 className="text-2xl text-black sm:text-3xl">Markets</h1>
-                    <p className="mt-1 text-sm text-black/40">
-                        Supply assets to earn yield across DeFi lending pools, LP positions, and on-chain indexes.
-                    </p>
+                    <div>
+                        <h1 className="text-2xl text-black dark:text-white sm:text-3xl">Markets</h1>
+                        <p className="mt-1 text-sm text-black/40 dark:text-white/50">
+                            Supply assets to earn yield across DeFi lending pools, LP positions, and on-chain indexes.
+                        </p>
+                    </div>
+                    <Link
+                        href="/dashboard/vaults/create"
+                        className="flex h-[var(--touch-target)] sm:h-10 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity shrink-0"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Create Vault
+                    </Link>
                 </motion.div>
 
                 {/* Stats */}
