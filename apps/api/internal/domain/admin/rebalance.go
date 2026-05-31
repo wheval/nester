@@ -25,10 +25,17 @@ type AllocationDeltaProjection struct {
 	Target   string `json:"target,omitempty"`
 }
 
+// TargetAllocation is a user-confirmed protocol weight (audit / preview; on-chain still uses auto strategy).
+type TargetAllocation struct {
+	Protocol   string  `json:"protocol"`
+	Percentage float64 `json:"percentage"`
+}
+
 // RebalanceRequest is the JSON body for POST /api/v1/admin/vaults/{id}/rebalance.
 type RebalanceRequest struct {
-	Strategy string `json:"strategy"`
-	DryRun   bool   `json:"dry_run"`
+	Strategy          string             `json:"strategy"`
+	DryRun            bool               `json:"dry_run"`
+	TargetAllocations []TargetAllocation `json:"target_allocations,omitempty"`
 }
 
 // RebalanceResponse is returned for both dry_run and live submissions.

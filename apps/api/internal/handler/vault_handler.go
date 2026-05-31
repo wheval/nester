@@ -316,9 +316,14 @@ func (h *VaultHandler) rebalanceVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req rebalanceVaultRequest
-	if len(r.Body) > 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr(err.Error()))
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes))
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("invalid request body"))
+		return
+	}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("request body must be valid JSON"))
 			return
 		}
 	}

@@ -645,7 +645,7 @@ export function WithdrawModal({
         return {
             walletAddress: address,
             contractId,
-            shares: quote.sharesToBurn,
+            shares: quote.sharesBurned,
         };
     }, [position, address, amount, quote]);
 

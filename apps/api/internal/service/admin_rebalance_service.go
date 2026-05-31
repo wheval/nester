@@ -53,6 +53,11 @@ func (s *AdminService) TriggerRebalance(
 		DryRun:   req.DryRun,
 		Status:   admindomain.RebalanceStatusPending,
 	}
+	if len(req.TargetAllocations) > 0 {
+		if deltasJSON, err := json.Marshal(req.TargetAllocations); err == nil {
+			record.ProjectedDeltas = deltasJSON
+		}
+	}
 	record, err = s.repository.CreateVaultRebalance(ctx, record)
 	if err != nil {
 		if errors.Is(err, postgres.ErrRebalanceInFlight) {

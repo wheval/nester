@@ -97,10 +97,21 @@ func (s *VaultRebalanceService) TriggerRebalance(
 	if v.UserID != userID {
 		return admindomain.RebalanceResponse{}, vault.ErrVaultNotFound
 	}
-	_ = allocations // applied via auto strategy on-chain
+
+	targets := make([]admindomain.TargetAllocation, 0, len(allocations))
+	for _, a := range allocations {
+		targets = append(targets, admindomain.TargetAllocation{
+			Protocol:   a.Protocol,
+			Percentage: a.Percentage,
+		})
+	}
+
+	// On-chain rebalance uses the auto strategy contract path; user-confirmed
+	// target_allocations are persisted on the rebalance record for audit.
 	return s.adminService.TriggerRebalance(ctx, vaultID, admindomain.RebalanceRequest{
-		Strategy: admindomain.RebalanceStrategyAuto,
-		DryRun:   false,
+		Strategy:          admindomain.RebalanceStrategyAuto,
+		DryRun:            false,
+		TargetAllocations: targets,
 	})
 }
 
