@@ -2,14 +2,95 @@
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, symbol_short, token, Address, Env,
-    IntoVal, Symbol, Vec,
+    IntoVal, Symbol, Val, Vec,
 };
-mod vault_token {
-    soroban_sdk::contractimport!(
-        file = "../../target/wasm32-unknown-unknown/release/vault_token.wasm"
-    );
+
+struct VaultTokenContractClient<'a> {
+    env: &'a Env,
+    address: Address,
 }
-use vault_token::Client as VaultTokenContractClient;
+
+impl<'a> VaultTokenContractClient<'a> {
+    fn new(env: &'a Env, address: &Address) -> Self {
+        Self {
+            env,
+            address: address.clone(),
+        }
+    }
+
+    fn call<R>(&self, name: &str, args: Vec<Val>) -> R
+    where
+        R: soroban_sdk::TryFromVal<Env, Val>,
+    {
+        self.env
+            .invoke_contract(&self.address, &Symbol::new(self.env, name), args)
+    }
+
+    fn balance(&self, id: &Address) -> i128 {
+        self.call(
+            "balance",
+            soroban_sdk::vec![self.env, id.clone().into_val(self.env)],
+        )
+    }
+
+    fn set_total_assets(&self, new_total: &i128) {
+        self.call(
+            "set_total_assets",
+            soroban_sdk::vec![self.env, (*new_total).into_val(self.env)],
+        )
+    }
+
+    fn shares_for_deposit(&self, amount: &i128) -> i128 {
+        self.call(
+            "shares_for_deposit",
+            soroban_sdk::vec![self.env, (*amount).into_val(self.env)],
+        )
+    }
+
+    fn mint_for_deposit(&self, to: &Address, amount: &i128) -> i128 {
+        self.call(
+            "mint_for_deposit",
+            soroban_sdk::vec![
+                self.env,
+                to.clone().into_val(self.env),
+                (*amount).into_val(self.env)
+            ],
+        )
+    }
+
+    fn amount_for_shares(&self, shares: &i128) -> i128 {
+        self.call(
+            "amount_for_shares",
+            soroban_sdk::vec![self.env, (*shares).into_val(self.env)],
+        )
+    }
+
+    fn get_deposit_time(&self, user: &Address) -> u64 {
+        self.call(
+            "get_deposit_time",
+            soroban_sdk::vec![self.env, user.clone().into_val(self.env)],
+        )
+    }
+
+    fn burn_for_withdrawal(&self, from: &Address, shares: &i128) -> i128 {
+        self.call(
+            "burn_for_withdrawal",
+            soroban_sdk::vec![
+                self.env,
+                from.clone().into_val(self.env),
+                (*shares).into_val(self.env)
+            ],
+        )
+    }
+
+    fn share_price(&self) -> i128 {
+        self.call("share_price", soroban_sdk::vec![self.env])
+    }
+
+    fn total_supply(&self) -> i128 {
+        self.call("total_supply", soroban_sdk::vec![self.env])
+    }
+}
 
 use nester_access_control::{AccessControl, Role};
 use nester_common::{emit_event, ContractError};
@@ -863,6 +944,7 @@ impl VaultContract {
         // Apply each delta to source-allocation bookkeeping. Min-rebalance
         // skip is per-source so we don't pay tx fees for dust adjustments.
         let mut applied = Vec::new(&env);
+        let mut total_delta: i128 = 0;
         for d in deltas.iter() {
             if d.delta.abs() < MIN_REBALANCE_AMOUNT {
                 continue;
@@ -880,7 +962,14 @@ impl VaultContract {
             }
 
             set_source_allocation(&env, &d.source_id, new_amount);
+            total_delta += d.delta;
             applied.push_back(d);
+        }
+
+        if total_delta < 0 {
+            let current_reserves = get_vault_liquid_reserves(&env);
+            set_vault_liquid_reserves(&env, current_reserves - total_delta);
+
         }
 
         env.storage().instance().set(&DataKey::LastRebalanceAt, &now);

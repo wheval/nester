@@ -18,6 +18,7 @@ type Config struct {
 	server                ServerConfig
 	database              DatabaseConfig
 	stellar               StellarConfig
+	intelligence          IntelligenceConfig
 	allocation            AllocationConfig
 	redis                 RedisConfig
 	settlementProviderURL string
@@ -31,13 +32,8 @@ type Config struct {
 	startup               StartupConfig
 	bank                  BankConfig
 	transactionPoller     TransactionPollerConfig
-	intelligence          IntelligenceConfig
 }
 
-type IntelligenceConfig struct {
-	serviceURL string
-	timeout    time.Duration
-}
 
 // TransactionPollerConfig governs the background loop that reconciles pending
 // transactions against Horizon (see internal/service.TransactionPoller).
@@ -101,6 +97,12 @@ type StellarConfig struct {
 
 type AllocationConfig struct {
 	minWeightPercent int
+}
+
+type IntelligenceConfig struct {
+	baseURL       string
+	serviceAPIKey string
+	timeout       time.Duration
 }
 
 type AuthConfig struct {
@@ -177,6 +179,11 @@ func Load() (*Config, error) {
 			withdrawalSlippageBps:     loader.intDefault("WITHDRAWAL_SLIPPAGE_BPS", 50),
 			harvestDefaultCompound:    loader.boolDefault("HARVEST_DEFAULT_COMPOUND", true),
 		},
+		intelligence: IntelligenceConfig{
+			baseURL:       loader.stringDefault("INTELLIGENCE_BASE_URL", loader.stringDefault("INTELLIGENCE_SERVICE_URL", "http://localhost:8000")),
+			serviceAPIKey: loader.stringDefault("INTELLIGENCE_SERVICE_API_KEY", ""),
+			timeout:       loader.durationDefault("INTELLIGENCE_TIMEOUT", loader.durationDefault("INTELLIGENCE_SERVICE_TIMEOUT", 10*time.Second)),
+		},
 		allocation: AllocationConfig{
 			minWeightPercent: loader.intDefault("MIN_ALLOCATION_WEIGHT", 5),
 		},
@@ -222,16 +229,13 @@ func Load() (*Config, error) {
 			paystackKey:    loader.stringDefault("PAYSTACK_SECRET_KEY", ""),
 			flutterwaveKey: loader.stringDefault("FLUTTERWAVE_SECRET_KEY", ""),
 		},
-		intelligence: IntelligenceConfig{
-			serviceURL: loader.stringDefault("INTELLIGENCE_SERVICE_URL", "http://localhost:8000"),
-			timeout:    loader.durationDefault("INTELLIGENCE_SERVICE_TIMEOUT", 30*time.Second),
-		},
 		transactionPoller: TransactionPollerConfig{
 			enabled:  loader.boolDefault("TX_POLLER_ENABLED", true),
 			interval: loader.durationDefault("TX_POLLER_INTERVAL", 15*time.Second),
 			minAge:   loader.durationDefault("TX_POLLER_MIN_AGE", 30*time.Second),
 		},
 	}
+
 
 	cfg.validate(&loader)
 
@@ -260,6 +264,26 @@ func (c Config) Stellar() StellarConfig {
 
 func (c Config) Allocation() AllocationConfig {
 	return c.allocation
+}
+
+func (c Config) Intelligence() IntelligenceConfig {
+	return c.intelligence
+}
+
+func (i IntelligenceConfig) BaseURL() string {
+	return i.baseURL
+}
+
+func (i IntelligenceConfig) ServiceURL() string {
+	return i.baseURL
+}
+
+func (i IntelligenceConfig) ServiceAPIKey() string {
+	return i.serviceAPIKey
+}
+
+func (i IntelligenceConfig) Timeout() time.Duration {
+	return i.timeout
 }
 
 func (s StellarConfig) USDCIssuer() string {
@@ -344,18 +368,6 @@ func (r RedisConfig) Addr() string {
 
 func (c Config) Bank() BankConfig {
 	return c.bank
-}
-
-func (c Config) Intelligence() IntelligenceConfig {
-	return c.intelligence
-}
-
-func (i IntelligenceConfig) ServiceURL() string {
-	return i.serviceURL
-}
-
-func (i IntelligenceConfig) Timeout() time.Duration {
-	return i.timeout
 }
 
 func (c Config) TransactionPoller() TransactionPollerConfig {

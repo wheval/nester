@@ -64,6 +64,7 @@ func (h *VaultHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/vaults/{id}/allocations", h.getAllocations)
 	mux.HandleFunc("POST /api/v1/vaults/{id}/harvest", h.harvestVault)
 	mux.HandleFunc("GET /api/v1/vaults/{id}/my-position", h.getMyPosition)
+	mux.HandleFunc("GET /api/v1/vaults/{id}/projection", h.getProjection)
 	mux.HandleFunc("GET /api/v1/vaults/{id}/preview-deposit", h.previewDeposit)
 	mux.HandleFunc("GET /api/v1/vaults/{id}/preview-withdraw", h.previewWithdraw)
 	mux.HandleFunc("GET /api/v1/vaults", h.listUserVaults)
@@ -396,6 +397,22 @@ func (h *VaultHandler) getMyPosition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.WriteJSON(w, http.StatusOK, response.OK(position))
+}
+
+func (h *VaultHandler) getProjection(w http.ResponseWriter, r *http.Request) {
+	vaultID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("vault id must be a valid UUID"))
+		return
+	}
+
+	projection, err := h.service.GetProjection(r.Context(), vaultID)
+	if err != nil {
+		h.writeDomainError(w, r, err)
+		return
+	}
+
+	response.WriteJSON(w, http.StatusOK, response.OK(projection))
 }
 
 func (h *VaultHandler) depositToVault(w http.ResponseWriter, r *http.Request) {

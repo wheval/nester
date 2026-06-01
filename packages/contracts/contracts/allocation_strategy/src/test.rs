@@ -813,10 +813,9 @@ fn rebalance_deltas_sum_to_zero_for_balanced_rebalance() {
 }
 
 /// Unbalanced: total (300) != sum(current_allocations) (400).
-/// Delta sum = 300 - 400 = -100 ≠ 0 → must panic.
+/// Delta sum = 300 - 400 = -100 (net withdrawal to vault).
 #[test]
-#[should_panic]
-fn rebalance_deltas_panics_when_total_mismatches_current_sum() {
+fn rebalance_deltas_allows_net_withdrawal_to_vault() {
     let (env, admin, _, strategy_id) = setup_with_type(VaultType::Balanced);
     let client = AllocationStrategyContractClient::new(&env, &strategy_id);
 
@@ -835,7 +834,7 @@ fn rebalance_deltas_panics_when_total_mismatches_current_sum() {
         ],
     );
 
-    // sum(current) = 400, but total = 300 → delta sum = -100 ≠ 0
+    // sum(current) = 400, but total = 300 → delta sum = -100
     let current = vec![
         &env,
         CurrentAllocation {
@@ -847,7 +846,8 @@ fn rebalance_deltas_panics_when_total_mismatches_current_sum() {
             amount: 100,
         },
     ];
-    client.calculate_rebalance_deltas(&current, &300_i128);
+    let deltas = client.calculate_rebalance_deltas(&current, &300_i128);
+    assert_eq!(delta_sum(&deltas), -100);
 }
 
 /// Empty current allocations with total=0 → all deltas are zero → succeeds.
@@ -918,4 +918,129 @@ fn test_set_allocations_unauthorized_is_rejected() {
 
     // attacker is not an operator — should panic
     client.set_allocations(&attacker, &1000_i128, &apys);
+}
+
+#[test]
+fn rebalance_skips_paused_protocol() {
+    let (env, admin, registry_id, strategy_id) = setup_with_type(VaultType::Balanced);
+    let registry = YieldRegistryContractClient::new(&env, &registry_id);
+    let client = AllocationStrategyContractClient::new(&env, &strategy_id);
+
+    // Initial state: A=50%, B=50%
+    client.set_weights(
+        &admin,
+        &vec![
+            &env,
+            AllocationWeight {
+                source_id: symbol_short!("aave"),
+                weight_bps: 5_000,
+            },
+            AllocationWeight {
+                source_id: symbol_short!("blend"),
+                weight_bps: 5_000,
+            },
+        ],
+    );
+
+    // Current: A=400, B=600 (Total=1000)
+    let current = vec![
+        &env,
+        CurrentAllocation {
+            source_id: symbol_short!("aave"),
+            amount: 400,
+        },
+        CurrentAllocation {
+            source_id: symbol_short!("blend"),
+            amount: 600,
+        },
+    ];
+
+    // Mark Blend as Paused. It should keep its 600, and Aave should keep its 400.
+    registry.update_status(&admin, &symbol_short!("blend"), &RegistrySourceStatus::Paused);
+
+    let deltas = client.calculate_rebalance_deltas(&current, &1_000_i128);
+
+    assert_eq!(delta_sum(&deltas), 0);
+    assert_eq!(delta_for(&deltas, symbol_short!("blend")), 0);
+    assert_eq!(delta_for(&deltas, symbol_short!("aave")), 0);
+}
+
+#[test]
+fn rebalance_redistributes_from_unhealthy_to_active() {
+    let (env, admin, registry_id, strategy_id) = setup_with_type(VaultType::Balanced);
+    let registry = YieldRegistryContractClient::new(&env, &registry_id);
+    let client = AllocationStrategyContractClient::new(&env, &strategy_id);
+
+    // Initial state: A=50%, B=50%
+    client.set_weights(
+        &admin,
+        &vec![
+            &env,
+            AllocationWeight {
+                source_id: symbol_short!("aave"),
+                weight_bps: 5_000,
+            },
+            AllocationWeight {
+                source_id: symbol_short!("blend"),
+                weight_bps: 5_000,
+            },
+        ],
+    );
+
+    // Current: A=500, B=500 (Total=1000)
+    let current = vec![
+        &env,
+        CurrentAllocation {
+            source_id: symbol_short!("aave"),
+            amount: 500,
+        },
+        CurrentAllocation {
+            source_id: symbol_short!("blend"),
+            amount: 500,
+        },
+    ];
+
+    // Mark Blend as Exploit. It should be drained to 0, and all 1000 should go to Aave.
+    registry.update_status(&admin, &symbol_short!("blend"), &RegistrySourceStatus::Exploit);
+
+    let deltas = client.calculate_rebalance_deltas(&current, &1_000_i128);
+
+    assert_eq!(delta_sum(&deltas), 0);
+    assert_eq!(delta_for(&deltas, symbol_short!("blend")), -500);
+    assert_eq!(delta_for(&deltas, symbol_short!("aave")), 500);
+}
+
+#[test]
+fn rebalance_withdraws_to_vault_when_all_unhealthy() {
+    let (env, admin, registry_id, strategy_id) = setup_with_type(VaultType::Balanced);
+    let registry = YieldRegistryContractClient::new(&env, &registry_id);
+    let client = AllocationStrategyContractClient::new(&env, &strategy_id);
+
+    client.set_weights(
+        &admin,
+        &vec![
+            &env,
+            AllocationWeight {
+                source_id: symbol_short!("aave"),
+                weight_bps: 10_000,
+            },
+        ],
+    );
+
+    let current = vec![
+        &env,
+        CurrentAllocation {
+            source_id: symbol_short!("aave"),
+            amount: 1000,
+        },
+    ];
+
+    // Mark Aave as Exploit.
+    registry.update_status(&admin, &symbol_short!("aave"), &RegistrySourceStatus::Exploit);
+
+    let deltas = client.calculate_rebalance_deltas(&current, &1_000_i128);
+
+    // Sum should be -1000 (withdrawn to vault)
+    assert_eq!(delta_sum(&deltas), -1000);
+    assert_eq!(delta_for(&deltas, symbol_short!("aave")), -1000);
 }

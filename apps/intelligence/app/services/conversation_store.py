@@ -9,7 +9,7 @@ no extra infrastructure.
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Dict, List, Optional, Protocol, Union
 
 from app.config import settings
 
@@ -43,13 +43,13 @@ class _RedisConversationStore:
     def _key(self, user_id: str) -> str:
         return f"{_KEY_PREFIX}{user_id}"
 
-    def get(self, user_id: str) -> list[dict[str, str]]:
+    def get(self, user_id: str) -> List[Dict[str, str]]:
         if not self._available:
             # Fallback to empty list if Redis not available
             return []
 
         try:
-            raw: str | None = self._client.get(self._key(user_id))  # type: ignore[assignment]
+            raw: Optional[str] = self._client.get(self._key(user_id))  # type: ignore[assignment]
             if not raw:
                 return []
             try:
@@ -101,10 +101,10 @@ class _InMemoryConversationStore:
     def __init__(self, ttl_minutes: int = 1440, max_turns: int = 20) -> None:
         self._ttl = timedelta(minutes=ttl_minutes)
         self._max_turns = max_turns
-        self._store: dict[str, list[dict[str, str]]] = {}
-        self._touched: dict[str, datetime] = {}
+        self._store: Dict[str, List[Dict[str, str]]] = {}
+        self._touched: Dict[str, datetime] = {}
 
-    def get(self, user_id: str) -> list[dict[str, str]]:
+    def get(self, user_id: str) -> List[Dict[str, str]]:
         self._evict_stale()
         history = self._store.get(user_id, [])
         # Trim to last 20 messages as required
@@ -136,7 +136,7 @@ class _InMemoryConversationStore:
 # ---------------------------------------------------------------------------
 
 class ConversationStore(Protocol):
-    def get(self, user_id: str) -> list[dict[str, str]]: ...
+    def get(self, user_id: str) -> List[Dict[str, str]]: ...
     def append(self, user_id: str, role: str, content: str) -> None: ...
     def clear(self, user_id: str) -> None: ...
 
@@ -145,7 +145,7 @@ class ConversationStore(Protocol):
 # Module-level singleton — shared across all requests in this worker
 # ---------------------------------------------------------------------------
 
-def _build_store() -> _RedisConversationStore | _InMemoryConversationStore:
+def _build_store() -> Union[_RedisConversationStore, _InMemoryConversationStore]:
     redis_url = settings.redis_url
     if redis_url:
         try:
@@ -169,4 +169,4 @@ def _build_store() -> _RedisConversationStore | _InMemoryConversationStore:
     return _InMemoryConversationStore(ttl_minutes=1440, max_turns=_MAX_TURNS)  # 24 hours TTL
 
 
-store: _RedisConversationStore | _InMemoryConversationStore = _build_store()
+store: Union[_RedisConversationStore, _InMemoryConversationStore] = _build_store()

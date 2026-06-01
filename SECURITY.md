@@ -52,6 +52,18 @@ Instead, use one of the following:
 | **Medium** | Limited data exposure, partial auth weakness, DoS of non-critical services |
 | **Low** | Information disclosure, best-practice violations with minimal impact |
 
+## Known and Accepted Vulnerabilities
+
+We maintain a list of known vulnerabilities in our dependency chain that we have assessed and accepted based on their risk profile:
+
+| ID | Module | Severity | Reason | Status |
+|----|--------|----------|--------|--------|
+| **GO-2026-4316** | `github.com/go-chi/chi` | Medium | Open redirect in unused `RedirectSlashes` middleware. Transitive dependency via `github.com/stellar/go-stellar-sdk`. Middleware not used in codebase. Waiting for upstream fix. | Accepted |
+
+**Mitigation strategy:** Our CI/CD pipeline (`govulncheck` step in `.github/workflows/security.yml`) explicitly allows known accepted vulnerabilities and only fails on new or unreviewed vulnerabilities.
+
+To report a vulnerability not listed here, see [Reporting a Vulnerability](#reporting-a-vulnerability) above.
+
 ## Safe Harbor
 
 Nester commits to not pursuing legal action against security researchers who:

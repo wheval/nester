@@ -151,6 +151,33 @@ fn deprecating_source_sets_migration_required() {
 }
 
 #[test]
+fn exploit_status_sets_migration_required_and_is_excluded_from_active() {
+    let env = Env::default();
+    let (client, admin) = setup(&env);
+
+    register_default(&client, &env, &admin, &aave_id(&env));
+    client.update_status(&admin, &aave_id(&env), &SourceStatus::Exploit);
+
+    let s = client.get_source(&aave_id(&env));
+    assert_eq!(s.status, SourceStatus::Exploit);
+    assert!(s.migration_required);
+    assert!(!s.migration_completed);
+    assert_eq!(client.get_sources_requiring_migration().len(), 1);
+    assert_eq!(client.get_active_sources().len(), 0);
+}
+
+#[test]
+#[should_panic]
+fn cannot_reactivate_exploit_source() {
+    let env = Env::default();
+    let (client, admin) = setup(&env);
+
+    register_default(&client, &env, &admin, &aave_id(&env));
+    client.update_status(&admin, &aave_id(&env), &SourceStatus::Exploit);
+    client.update_status(&admin, &aave_id(&env), &SourceStatus::Active);
+}
+
+#[test]
 #[should_panic]
 fn cannot_reactivate_deprecated_source() {
     let env = Env::default();

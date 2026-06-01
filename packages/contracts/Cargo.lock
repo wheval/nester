@@ -23,7 +23,6 @@ version = "0.1.0"
 dependencies = [
  "nester-access-control",
  "nester-common",
- "nester-test-utils",
  "soroban-sdk",
  "yield-registry-contract",
 ]
@@ -1585,7 +1584,6 @@ version = "0.1.0"
 dependencies = [
  "nester-access-control",
  "nester-common",
- "nester-test-utils",
  "soroban-sdk",
 ]
 

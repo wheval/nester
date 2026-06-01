@@ -93,6 +93,34 @@ export interface ChatMessage {
   content: string
 }
 
+export interface SavingsPlanRequest {
+    goal_usdc: number;
+    time_horizon_months: number;
+    max_monthly_contribution_usdc: number;
+    vault_id?: string;
+}
+
+export interface ScheduleEntry {
+    month: number;
+    deposit: number;
+    expected_balance: number;
+    yield_earned: number;
+}
+
+export interface MilestoneProjection {
+    month: number;
+    expected_balance: number;
+}
+
+export interface SavingsPlanResponse {
+    achievable: boolean;
+    required_monthly_deposit: number;
+    monthly_schedule: ScheduleEntry[];
+    total_yield_earned: number;
+    narrative: string;
+    milestones: MilestoneProjection[];
+}
+
 // ── Base fetch helper ─────────────────────────────────────────────────────────
 
 import config from '@/lib/config'
@@ -131,7 +159,7 @@ async function goApiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── intelligence client ───────────────────────────────────────────────────────
 
-export const intelligence = {
+export const intelligenceApi = {
   /** Per-vault AI commentary and recommendations. */
   getVaultRecommendations: (vaultId: string) =>
     apiFetch<VaultRecommendation>(`/vaults/${vaultId}/recommendations`),
@@ -143,6 +171,13 @@ export const intelligence = {
   /** Portfolio-level insight cards for a given user. */
   getPortfolioInsights: (userId: string) =>
     apiFetch<PortfolioInsight[]>(`/portfolio/${userId}/insights`),
+
+  /** Generate a concrete, personalized deposit schedule based on user goals. */
+  createSavingsPlan: (request: SavingsPlanRequest) =>
+    apiFetch<SavingsPlanResponse>('/intelligence/savings-plan', {
+        method: 'POST',
+        body: JSON.stringify(request),
+    }),
 
   recommendVault: (input: VaultRecommendationInput) =>
     apiFetch<VaultRecommendationPlan>('/recommend/vault', {
@@ -177,3 +212,6 @@ export const intelligence = {
     return new EventSource(`${INTELLIGENCE_BASE}/intelligence/chat?${params}`)
   },
 }
+
+// Export as default or intelligence for backward compatibility if needed
+export const intelligence = intelligenceApi;

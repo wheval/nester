@@ -258,14 +258,23 @@ export default function StocksPage() {
 
     // ── fetch pools ───────────────────────────────────────────────────────────
     useEffect(() => {
-        if (!isConnected) return;
-        setLoadingPools(true);
-        setErrorPools(false);
-        fetchYieldOpportunities("Stellar", 20)
-            .then(setPools)
-            .catch(() => setErrorPools(true))
-            .finally(() => setLoadingPools(false));
-    }, [isConnected]);
+        if (!isConnected || pools.length > 0) return;
+        
+        const load = async () => {
+            setLoadingPools(true);
+            setErrorPools(false);
+            try {
+                const data = await fetchYieldOpportunities("Stellar", 20);
+                setPools(data);
+            } catch {
+                setErrorPools(true);
+            } finally {
+                setLoadingPools(false);
+            }
+        };
+        
+        load();
+    }, [isConnected, pools.length]);
 
     // ── fetch AI pick ─────────────────────────────────────────────────────────
     useEffect(() => {

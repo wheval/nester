@@ -641,6 +641,53 @@ func (s *VaultService) GetMyPosition(ctx context.Context, userID uuid.UUID, vaul
 	return vault.BuildUserVaultPosition(v, userID, txns), nil
 }
 
+func (s *VaultService) GetProjection(ctx context.Context, vaultID uuid.UUID) (vault.Projection, error) {
+	if vaultID == uuid.Nil {
+		return vault.Projection{}, vault.ErrInvalidVault
+	}
+
+	v, err := s.repository.GetVault(ctx, vaultID)
+	if err != nil {
+		return vault.Projection{}, err
+	}
+
+	// Calculate weighted average APY
+	var totalAmount decimal.Decimal
+	var weightedAPY decimal.Decimal
+	for _, a := range v.Allocations {
+		totalAmount = totalAmount.Add(a.Amount)
+		weightedAPY = weightedAPY.Add(a.Amount.Mul(a.APY))
+	}
+
+	avgAPY := 0.0
+	if !totalAmount.IsZero() {
+		avgAPY, _ = weightedAPY.Div(totalAmount).Float64()
+	}
+
+	// Project for 365 days
+	timeline := make([]vault.ProjectionPoint, 366)
+	currentBalance := v.CurrentBalance
+	dailyRate := avgAPY / 100 / 365
+	now := time.Now().UTC()
+
+	for i := 0; i <= 365; i++ {
+		timeline[i] = vault.ProjectionPoint{
+			Date:    now.AddDate(0, 0, i),
+			Balance: currentBalance,
+		}
+		// Compound daily: next = current * (1 + rate)
+		growth := currentBalance.Mul(decimal.NewFromFloat(dailyRate))
+		currentBalance = currentBalance.Add(growth)
+	}
+
+	return vault.Projection{
+		VaultID:    vaultID,
+		Currency:   v.Currency,
+		CurrentAPY: avgAPY,
+		Timeline:   timeline,
+	}, nil
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func decimalScale(value decimal.Decimal) int32 {

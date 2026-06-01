@@ -8,13 +8,13 @@ import { NotificationsToaster } from "@/components/notifications-toaster";
 import { WebSocketProvider } from "@/components/websocket-provider";
 import { ReactQueryProvider } from "@/components/react-query-provider";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SettingsProvider } from "@/context/settings-context";
+import { OnboardingProvider } from "@/hooks/useOnboarding";
+import { NetworkProvider } from "@/context/NetworkProvider";
+import { NetworkBanner } from "@/components/network/NetworkSelector";
 import "./globals.css";
 
-const inter = Inter({
-    subsets: ["latin"],
-    variable: "--font-inter",
-    display: "swap",
-});
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
     title: "Nester | DApp",
@@ -26,11 +26,7 @@ export const metadata: Metadata = {
     },
 };
 
-import { SettingsProvider } from "@/context/settings-context";
 import { ConsentProvider } from "@/context/consent-context";
-import { OnboardingProvider } from "@/hooks/useOnboarding";
-import { NetworkProvider } from "@/context/NetworkProvider";
-import { NetworkBanner } from "@/components/network/NetworkSelector";
 import { ConsentGatedPrometheus } from "@/components/consent-gated-prometheus";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 

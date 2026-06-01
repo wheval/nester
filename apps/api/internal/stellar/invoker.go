@@ -353,6 +353,18 @@ func (c *ContractInvoker) PreviewWithdrawNet(ctx context.Context, contractAddres
 	return scValMapFieldI128(result, "net_amount_received")
 }
 
+// SimulateI128Function simulates a contract call that takes a single i128
+// argument and returns an i128.
+func (c *ContractInvoker) SimulateI128Function(ctx context.Context, contractAddress, functionName string, arg int64) (int64, error) {
+	result, err := c.simulateContractFn(ctx, contractAddress, functionName, []xdr.ScVal{
+		int64ToI128ScVal(arg),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return i128ScValToInt64(result)
+}
+
 func (c *ContractInvoker) simulateContractFn(
 	ctx context.Context,
 	contractAddress, functionName string,

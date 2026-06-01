@@ -29,6 +29,7 @@
 }
 
 :root {
+    --font-inter: Inter, ui-sans-serif, system-ui, sans-serif;
     --background: 0 0% 100%;
     --foreground: 240 10% 8%;
     --card: 0 0% 100%;

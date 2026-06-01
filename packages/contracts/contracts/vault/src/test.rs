@@ -5,7 +5,7 @@ extern crate std;
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger, LedgerInfo},
-    token, Address, Env, String,
+    token, Address, Env, String, Symbol,
 };
 use nester_access_control::Role;
 use vault_token::{VaultTokenContract, VaultTokenContractClient};
@@ -1157,4 +1157,53 @@ fn withdrawal_charges_no_perf_fee_on_impairment() {
     // an exact equality is the right contract — per-review feedback.
     let balance = token::Client::new(&env, &token.address).balance(&user);
     assert_eq!(balance, 800 * XLM, "impairment must not charge a performance fee");
+}
+
+#[contract]
+struct MockStrategy;
+#[contractimpl]
+impl MockStrategy {
+    pub fn calculate_rebalance_deltas(env: Env, _current: soroban_sdk::Vec<crate::CurrentAllocationView>, _total: i128) -> soroban_sdk::Vec<crate::AllocationDeltaView> {
+        let mut deltas = soroban_sdk::Vec::new(&env);
+        deltas.push_back(crate::AllocationDeltaView {
+            source_id: Symbol::new(&env, "aave"),
+            delta: -400 * 10_000_000, // Withdraw 400
+        });
+        deltas
+    }
+}
+
+#[test]
+fn rebalance_with_net_negative_delta_increases_liquid_reserves() {
+    let (env, admin, token, vault, _treasury) = setup();
+    let strategy_id = Address::generate(&env); // Mock strategy
+    vault.set_allocation_strategy(&admin, &strategy_id);
+
+    let user = Address::generate(&env);
+    mint(&token, &user, 1000 * XLM);
+    vault.deposit(&user, &(1000 * XLM), &0);
+
+    // Initial reserves = 1000
+    // Record allocation to a source to simulate deployment
+    let source_id = Symbol::new(&env, "aave");
+    vault.grant_role(&admin, &admin, &Role::Operator);
+    vault.record_source_allocation(&admin, &source_id, &(1000 * XLM));
+    
+    // Deployed total = 1000. 
+    // We need to mock calculate_rebalance_deltas to return a negative delta.
+    
+    let real_strategy_id = env.register_contract(None, MockStrategy);
+    vault.set_allocation_strategy(&admin, &real_strategy_id);
+    
+    vault.rebalance(&admin);
+    
+    // Let's check another way. emergency_withdraw uses liquid reserves.
+    vault.pause(&admin);
+    let _principal = vault.get_shares(&user); // 1000 shares
+
+    // We have 1000 tokens in contract.
+    // We processed rebalance which increased liquid reserves bookkeeping to 1400.
+    // Now if we try to emergency_withdraw 1000, it should succeed because 1400 >= 1000.
+    let withdrawn = vault.emergency_withdraw(&user);
+    assert_eq!(withdrawn, 1000 * XLM);
 }

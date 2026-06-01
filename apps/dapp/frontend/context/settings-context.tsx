@@ -76,19 +76,25 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         const resolved: Theme =
             saved === "light" || saved === "dark" || saved === "system" ? saved : "dark";
 
-        setThemeState(resolved);
-        applyThemeClass(resolved);
-        setIsDarkMode(resolveDark(resolved));
-
+        const timer = setTimeout(() => {
+            setThemeState(resolved);
+            applyThemeClass(resolved);
+            setIsDarkMode(resolveDark(resolved));
+        }, 0);
+        
         if (resolved === "system") {
             const mq = window.matchMedia("(prefers-color-scheme: dark)");
             const onChange = () => {
-                applyThemeClass("system");
-                setIsDarkMode(resolveDark("system"));
+                setIsDarkMode(mq.matches);
             };
-            mq.addEventListener("change", onChange);
-            return () => mq.removeEventListener("change", onChange);
+            mq.addListener(onChange);
+            return () => {
+                mq.removeListener(onChange);
+                clearTimeout(timer);
+            };
         }
+        
+        return () => clearTimeout(timer);
     }, []);
 
     const setCurrency = (val: Currency) => {

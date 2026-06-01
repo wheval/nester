@@ -585,7 +585,6 @@ export function WithdrawModal({
     onClose: () => void;
     position: PortfolioPosition | null;
 }) {
-    const { currentNetwork } = useNetwork();
     const { address } = useWallet();
     const { getWithdrawalQuote, recordWithdrawal } = usePortfolio();
 

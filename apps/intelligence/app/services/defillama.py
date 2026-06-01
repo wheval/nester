@@ -1,8 +1,7 @@
-"""DeFiLlama client for live TVL and APY feeds."""
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp
 
@@ -20,7 +19,7 @@ _redis_available: bool = False
 _mem_cache: dict[str, tuple[Any, float]] = {}
 
 
-def _get_redis() -> Any:
+def _get_redis() -> Optional[Any]:
     global _redis_client, _redis_available
     if _redis_client is not None:
         return _redis_client if _redis_available else None
@@ -38,7 +37,7 @@ def _get_redis() -> Any:
     return _redis_client if _redis_available else None
 
 
-def _cache_get(key: str) -> Any | None:
+def _cache_get(key: str) -> Optional[Any]:
     r = _get_redis()
     if r is not None:
         try:
@@ -174,7 +173,7 @@ class DeFiLlamaClient:
         return history
 
 
-_default_client: DeFiLlamaClient | None = None
+_default_client: Optional[DeFiLlamaClient] = None
 
 
 def get_client() -> DeFiLlamaClient:

@@ -255,16 +255,16 @@ impl YieldRegistryContract {
 
         let mut source = get_source_or_panic(&env, &id);
 
-        // Deprecated is a terminal state.
-        if matches!(source.status, SourceStatus::Deprecated) {
+        // Deprecated and Exploit are terminal states.
+        if matches!(source.status, SourceStatus::Deprecated) || matches!(source.status, SourceStatus::Exploit) {
             panic_with_error!(&env, ContractError::InvalidOperation);
         }
 
         let old_status = source.status.clone();
         source.status = new_status.clone();
 
-        // Deprecation implies migration is required.
-        if matches!(new_status, SourceStatus::Deprecated) {
+        // Deprecation or Exploit implies migration is required.
+        if matches!(new_status, SourceStatus::Deprecated) || matches!(new_status, SourceStatus::Exploit) {
             source.migration_required = true;
             source.migration_completed = false;
             source.migration_completed_at = 0;

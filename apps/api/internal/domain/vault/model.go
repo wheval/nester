@@ -57,6 +57,18 @@ type Vault struct {
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
+type ProjectionPoint struct {
+	Date    time.Time       `json:"date"`
+	Balance decimal.Decimal `json:"balance"`
+}
+
+type Projection struct {
+	VaultID    uuid.UUID         `json:"vault_id"`
+	Currency   string            `json:"currency"`
+	CurrentAPY float64           `json:"current_apy"`
+	Timeline   []ProjectionPoint `json:"timeline"`
+}
+
 type Allocation struct {
 	ID          uuid.UUID       `json:"id"`
 	VaultID     uuid.UUID       `json:"vault_id"`

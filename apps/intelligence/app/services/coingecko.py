@@ -1,4 +1,5 @@
 """CoinGecko client for live price data and market sentiment."""
+
 import json
 import logging
 import time
@@ -40,6 +41,7 @@ def _get_redis() -> Any:
         import redis as _redis
 
         from app.config import settings
+
         _redis_client = _redis.from_url(settings.redis_url, decode_responses=True)
         _redis_client.ping()
         _redis_available = True

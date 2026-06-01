@@ -40,7 +40,7 @@ export default function YieldBreakdownChart({ data }: YieldBreakdownChartProps) 
 
   // Prepare data for Recharts: each month becomes an object with properties for each vault
   const chartData = sortedMonths.map(month => {
-    const monthObj: any = { month };
+    const monthObj: Record<string, string | number> = { month };
     const vaultMap = monthsMap.get(month)!;
     vaultNames.forEach(vault => {
       monthObj[vault] = vaultMap.get(vault) || 0;

@@ -93,4 +93,3 @@ async def test_analyze_recommendation_returns_confidence_fields(monkeypatch):
     assert result.action.startswith("Shift 10%")
     assert result.confidence_reason
     assert result.data_freshness
-

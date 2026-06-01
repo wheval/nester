@@ -135,25 +135,23 @@ class VaultContextFetcher:
                     for vault in raw_vaults:
                         if not isinstance(vault, dict):
                             continue
-                        name = vault.get(
-                            "name",
-                            vault.get("contract_address", "Unknown Vault"),
-                        )
-                        balance = vault.get(
-                            "current_balance",
-                            vault.get("total_balance_usd", 0),
-                        )
                         vaults.append({
-                            "id": vault.get("id", ""),
-                            "name": name,
-                            "apy": vault.get("average_apy", vault.get("apy", 0)),
-                            "balance_usd": balance,
-                            "risk_tier": vault.get(
-                                "risk_tier",
-                                vault.get("status", "unknown"),
-                            ),
-                            "currency": vault.get("currency", "USDC"),
-                        })
+                                "id": vault.get("id", ""),
+                                "name": vault.get(
+                                    "name",
+                                    vault.get("contract_address", "Unknown Vault")
+                                ),
+                                "apy": vault.get("average_apy", vault.get("apy", 0)),
+                                "balance_usd": vault.get(
+                                    "current_balance",
+                                    vault.get("total_balance_usd", 0)
+                                ),
+                                "risk_tier": vault.get(
+                                    "risk_tier",
+                                    vault.get("status", "unknown")
+                                ),
+                                "currency": vault.get("currency", "USDC"),
+                            })
                     return vaults
         except Exception as e:
             logger.warning(f"Error fetching available vaults: {e}")
@@ -172,8 +170,9 @@ class VaultContextFetcher:
                 return list(cached)
         else:
             import time
-            if time.time() < self._market_rates_cache_expiry and self._market_rates_cache.get(
-                "data"
+            if (
+                time.time() < self._market_rates_cache_expiry
+                and self._market_rates_cache.get("data")
             ):
                 return list(self._market_rates_cache["data"])
 
@@ -221,7 +220,13 @@ class VaultContextFetcher:
         # Fallback to hardcoded rates
         logger.warning("Using fallback market rates")
         fallback_rates = [
-            {"protocol": "aave", "symbol": "aUSDC", "apy": 0.065, "tvlUsd": 0, "chain": "ethereum"},
+            {
+                "protocol": "aave",
+                "symbol": "aUSDC",
+                "apy": 0.065,
+                "tvlUsd": 0,
+                "chain": "ethereum"
+            },
             {
                 "protocol": "blend",
                 "symbol": "blendUSDC",
@@ -308,7 +313,9 @@ class VaultContextFetcher:
         risk_lines = []
         for vault in vaults:
             vault_id = vault.get("id", "")
-            vault_name = vault.get("name", vault.get("contract_address", "Unknown Vault"))
+            vault_name = vault.get(
+                "name", vault.get("contract_address", "Unknown Vault")
+            )
 
             # Get risk data for this vault
             vault_risk = risk_data.get(vault_id, {}) if risk_data else {}
