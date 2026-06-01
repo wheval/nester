@@ -147,11 +147,13 @@ export function YieldComparisonChart({
                 width={42}
               />
               <Tooltip
-                formatter={(value: number, name: string) => [
-                  `${value.toFixed(2)}%`,
-                  name,
+                formatter={(value, name) => [
+                  `${Number(value ?? 0).toFixed(2)}%`,
+                  String(name ?? ""),
                 ]}
-                labelFormatter={(label: string) => new Date(label).toLocaleDateString()}
+                labelFormatter={(label) =>
+                  new Date(String(label ?? "")).toLocaleDateString()
+                }
                 contentStyle={{
                   borderRadius: "12px",
                   border: "1px solid rgba(0,0,0,0.08)",
