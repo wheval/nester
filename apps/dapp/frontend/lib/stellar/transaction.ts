@@ -399,14 +399,15 @@ export async function executeVaultWithdraw(params: {
   contractId: string;
   asset: "USDC" | "XLM";
   shares: number;
+  minAssetsOut?: number;
 }): Promise<TransactionReceipt> {
-  const { walletAddress, contractId, shares } = params;
+  const { walletAddress, contractId, shares, minAssetsOut } = params;
 
   if (!isRealContractId(contractId)) {
     throw new Error("Vault is not yet live. Withdrawals are currently disabled.");
   }
 
-  const { xdr } = await buildWithdrawTransaction({ walletAddress, contractId, shares });
+  const { xdr } = await buildWithdrawTransaction({ walletAddress, contractId, shares, minAssetsOut });
   const signedXdr = await signTransaction(xdr);
   return submitTransaction(signedXdr);
 }

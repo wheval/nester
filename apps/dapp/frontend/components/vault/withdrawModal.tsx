@@ -196,6 +196,7 @@ export function WithdrawModal({ open, onClose, position }: WithdrawModalProps) {
         contractId: vaultDef?.contractAddress || "",
         asset: position.asset?.toUpperCase() === "XLM" ? "XLM" : "USDC",
         shares: quote.sharesBurned,
+        minAssetsOut: quote.netAmount,
       });
 
       const result = recordWithdrawal({

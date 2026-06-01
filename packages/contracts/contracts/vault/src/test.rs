@@ -546,6 +546,60 @@ fn gross_preview_as_min_assets_out_trips_slippage_on_fee_bearing_withdrawal() {
     vault.withdraw(&user, &shares, &gross);
 }
 
+// preview_withdraw_net must always be <= preview_withdraw (gross).
+#[test]
+fn preview_withdraw_net_le_preview_withdraw() {
+    let (env, admin, token, vault, _treasury) = setup();
+    let user = Address::generate(&env);
+    mint(&token, &user, 1_000 * XLM);
+    vault.deposit(&user, &(1_000 * XLM), &0);
+
+    vault.grant_role(&admin, &admin, &Role::Manager);
+    vault.report_yield(&admin, &(200 * XLM));
+    mint(&token, &vault.address, 200 * XLM);
+
+    let shares = vault.get_shares(&user);
+    let gross = vault.preview_withdraw(&shares);
+    let net = vault.preview_withdraw_net(&shares);
+    assert!(net <= gross, "net must be <= gross");
+}
+
+// No early-withdrawal fee when outside the lock period.
+// preview_withdraw_net is worst-case (always deducts both fees), so the
+// result is still <= gross. The user-aware withdrawal_fee_preview is the
+// right tool when the lock period is known to have elapsed.
+#[test]
+fn preview_withdraw_net_no_early_fee_after_lock() {
+    let (env, admin, token, vault, _treasury) = setup();
+    let user = Address::generate(&env);
+    mint(&token, &user, 1_000 * XLM);
+    vault.deposit(&user, &(1_000 * XLM), &0);
+
+    // Advance past the lock period (DAY seconds).
+    env.ledger().set(LedgerInfo {
+        timestamp: DAY + 1,
+        ..env.ledger().get()
+    });
+
+    vault.grant_role(&admin, &admin, &Role::Manager);
+    vault.report_yield(&admin, &(200 * XLM));
+    mint(&token, &vault.address, 200 * XLM);
+
+    let shares = vault.get_shares(&user);
+    let gross = vault.preview_withdraw(&shares);
+    let net = vault.preview_withdraw_net(&shares);
+
+    // preview_withdraw_net is always worst-case — net <= gross regardless of
+    // lock status. The user-aware withdrawal_fee_preview returns a tighter
+    // estimate once the lock has elapsed.
+    assert!(net <= gross);
+
+    // Confirm withdrawal_fee_preview correctly omits the early fee after lock.
+    let fee_preview = vault.withdrawal_fee_preview(&user, &shares);
+    assert_eq!(fee_preview.early_withdrawal_fee_deducted, 0, "no early fee after lock");
+    assert!(fee_preview.net_amount_received >= net, "user-aware preview >= worst-case net");
+}
+
 #[test]
 #[should_panic]
 fn withdrawal_of_more_than_owned_is_rejected() {

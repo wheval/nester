@@ -1371,13 +1371,47 @@ impl VaultContract {
     /// the amount actually transferred is *less* than this gross figure and the
     /// call reverts with `ContractError::SlippageExceeded` (see #448). For a
     /// slippage-safe floor that reflects the fees deducted on withdrawal, use
-    /// [`VaultContract::withdrawal_fee_preview`] and read `net_amount_received`.
+    /// [`VaultContract::preview_withdraw_net`] or
+    /// [`VaultContract::withdrawal_fee_preview`].
     pub fn preview_withdraw(env: Env, shares: i128) -> i128 {
         require_initialized(&env);
         if shares <= 0 {
             panic_with_error!(&env, ContractError::InvalidAmount);
         }
         vault_token_client(&env).amount_for_shares(&shares)
+    }
+
+    /// Returns the amount the caller actually receives after all fees —
+    /// safe to use directly as `min_assets_out` in [`VaultContract::withdraw`].
+    ///
+    /// Worst-case scenario: assumes the entire gross amount is yield (maximum
+    /// performance fee) and that the lock period is still active (early-withdrawal
+    /// fee applies). Callers that know the user's cost basis or lock status can
+    /// use [`VaultContract::withdrawal_fee_preview`] for a tighter estimate.
+    pub fn preview_withdraw_net(env: Env, shares: i128) -> i128 {
+        require_initialized(&env);
+        if shares <= 0 {
+            panic_with_error!(&env, ContractError::InvalidAmount);
+        }
+        let gross = vault_token_client(&env).amount_for_shares(&shares);
+        let config = get_fee_config(&env);
+
+        // Worst-case: treat the full gross as yield.
+        let perf_fee = nester_common::fees::calculate_performance_fee(
+            gross,
+            config.performance_fee_bps,
+        )
+        .unwrap_or(0);
+
+        // Worst-case: assume still within lock period.
+        let early_fee = nester_common::fees::calculate_withdrawal_fee(
+            gross,
+            config.early_withdrawal_fee_bps,
+        )
+        .unwrap_or(0);
+
+        let total_fee = perf_fee.saturating_add(early_fee);
+        gross.saturating_sub(total_fee)
     }
 
     pub fn get_shares(env: Env, user: Address) -> i128 {

@@ -96,3 +96,10 @@ func (s *SorobanVaultChainInvoker) HarvestVault(
 ) (string, error) {
 	return s.invoker.InvokeWithAddressAndBool(ctx, contractAddress, "harvest", userAddress, compound)
 }
+
+// PreviewWithdrawNet calls preview_withdraw_net on the vault contract and
+// returns the net amount (in stroops) the user receives after all fees.
+// Use this value as min_assets_out when building a withdraw transaction.
+func (s *SorobanVaultChainInvoker) PreviewWithdrawNet(ctx context.Context, contractAddress string, sharesStroops int64) (int64, error) {
+	return s.invoker.SimulateI128Function(ctx, contractAddress, "preview_withdraw_net", sharesStroops)
+}
