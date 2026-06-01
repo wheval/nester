@@ -26,8 +26,8 @@ func TestApplyIndexedEvent_Deposit_ProcessesOnce(t *testing.T) {
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO processed_chain_events").
-		WithArgs(event.ID, event.ContractID, event.EventType, event.Ledger).
+	mock.ExpectExec("INSERT INTO processed_events").
+		WithArgs(event.ID, event.Ledger).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("UPDATE vaults").
 		WithArgs("10.25", event.ContractID).
@@ -56,8 +56,8 @@ func TestApplyIndexedEvent_DuplicateEvent_IsSkipped(t *testing.T) {
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO processed_chain_events").
-		WithArgs(event.ID, event.ContractID, event.EventType, event.Ledger).
+	mock.ExpectExec("INSERT INTO processed_events").
+		WithArgs(event.ID, event.Ledger).
 		WillReturnResult(sqlmock.NewResult(1, 0))
 	mock.ExpectCommit()
 

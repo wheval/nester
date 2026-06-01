@@ -359,12 +359,10 @@ func setLastIndexedLedger(ctx context.Context, sysRepo systemstate.Repository, l
 
 func markEventProcessed(ctx context.Context, tx *sql.Tx, event indexedEvent) (bool, error) {
 	result, err := tx.ExecContext(ctx, `
-INSERT INTO processed_chain_events (event_id, contract_id, event_type, ledger)
-VALUES ($1, $2, $3, $4)
+INSERT INTO processed_events (event_id, ledger_sequence)
+VALUES ($1, $2)
 ON CONFLICT (event_id) DO NOTHING`,
 		event.ID,
-		event.ContractID,
-		event.EventType,
 		event.Ledger,
 	)
 	if err != nil {
