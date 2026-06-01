@@ -78,7 +78,7 @@ func (r *ContractReader) SourceAPYBPS(ctx context.Context, registryAddress, prot
 	for _, entry := range *scMap {
 		if entry.Key.Type == xdr.ScValTypeScvSymbol && string(entry.Key.MustSym()) == "current_apy_bps" {
 			if entry.Val.Type == xdr.ScValTypeScvU32 {
-				return entry.Val.MustU32(), nil
+				return uint32(entry.Val.MustU32()), nil
 			}
 		}
 	}

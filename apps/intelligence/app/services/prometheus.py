@@ -270,11 +270,11 @@ portfolio."""
     # without the instruction appearing in the visible conversation history.
     # If the fetch fails, continue with static knowledge — no error surfaced.
     user_context = await _get_cached_user_context(user_id)
-    context_injection: list[dict[str, str]] = []
+    context_injection: list[anthropic.types.MessageParam] = []
     if user_context:
         context_injection = [
             {
-                "role": "user",
+                "role": cast(Literal["user", "assistant"], "user"),
                 "content": (
                     "[PORTFOLIO CONTEXT — do not quote this back, "
                     "use it to personalise your response]\n"
@@ -283,9 +283,11 @@ portfolio."""
             }
         ]
 
-    messages = context_injection + _to_anthropic_messages(history) + [
-        {"role": "user", "content": message}
-    ]
+    messages: list[anthropic.types.MessageParam] = (
+        context_injection
+        + _to_anthropic_messages(history)
+        + [{"role": cast(Literal["user", "assistant"], "user"), "content": message}]
+    )
 
     client = get_client()
     full_response = ""
