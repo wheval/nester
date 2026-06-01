@@ -65,6 +65,8 @@ func (h *VaultHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/vaults/{id}/harvest", h.harvestVault)
 	mux.HandleFunc("GET /api/v1/vaults/{id}/my-position", h.getMyPosition)
 	mux.HandleFunc("GET /api/v1/vaults/{id}/projection", h.getProjection)
+	mux.HandleFunc("GET /api/v1/vaults/{id}/preview-deposit", h.previewDeposit)
+	mux.HandleFunc("GET /api/v1/vaults/{id}/preview-withdraw", h.previewWithdraw)
 	mux.HandleFunc("GET /api/v1/vaults", h.listUserVaults)
 	mux.HandleFunc("GET /api/v1/vaults/all", h.listVaults)
 	mux.HandleFunc("POST /api/v1/vaults/{id}/deposit", h.depositToVault)
@@ -606,4 +608,76 @@ func isAlpha(s string) bool {
 func stringToDecimal(s string) (decimal.Decimal, error) {
 	s = strings.TrimSpace(s)
 	return decimal.NewFromString(s)
+}
+
+func (h *VaultHandler) previewDeposit(w http.ResponseWriter, r *http.Request) {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
+		response.WriteJSON(w, http.StatusUnauthorized, response.Err(http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized"))
+		return
+	}
+
+	vaultID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("vault id must be a valid UUID"))
+		return
+	}
+
+	amountStr := r.URL.Query().Get("amount")
+	if amountStr == "" {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("amount is required"))
+		return
+	}
+
+	amount, err := decimal.NewFromString(amountStr)
+	if err != nil || amount.Cmp(decimal.Zero) <= 0 {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("amount must be a positive number"))
+		return
+	}
+
+	out, err := h.service.PreviewDeposit(r.Context(), service.PreviewDepositInput{
+		VaultID: vaultID,
+		Amount:  amount,
+	})
+	if err != nil {
+		h.writeDomainError(w, r, err)
+		return
+	}
+
+	response.WriteJSON(w, http.StatusOK, response.OK(out))
+}
+
+func (h *VaultHandler) previewWithdraw(w http.ResponseWriter, r *http.Request) {
+	if _, ok := auth.GetUserFromContext(r.Context()); !ok {
+		response.WriteJSON(w, http.StatusUnauthorized, response.Err(http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized"))
+		return
+	}
+
+	vaultID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("vault id must be a valid UUID"))
+		return
+	}
+
+	sharesStr := r.URL.Query().Get("shares")
+	if sharesStr == "" {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("shares is required"))
+		return
+	}
+
+	shares, err := decimal.NewFromString(sharesStr)
+	if err != nil || shares.Cmp(decimal.Zero) <= 0 {
+		response.WriteJSON(w, http.StatusBadRequest, response.ValidationErr("shares must be a positive number"))
+		return
+	}
+
+	out, err := h.service.PreviewWithdraw(r.Context(), service.PreviewWithdrawInput{
+		VaultID: vaultID,
+		Shares:  shares,
+	})
+	if err != nil {
+		h.writeDomainError(w, r, err)
+		return
+	}
+
+	response.WriteJSON(w, http.StatusOK, response.OK(out))
 }

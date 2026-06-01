@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/stellar/go/xdr"
 
 	"github.com/suncrestlabs/nester/apps/api/internal/stellar"
 )
@@ -101,5 +104,34 @@ func (s *SorobanVaultChainInvoker) HarvestVault(
 // returns the net amount (in stroops) the user receives after all fees.
 // Use this value as min_assets_out when building a withdraw transaction.
 func (s *SorobanVaultChainInvoker) PreviewWithdrawNet(ctx context.Context, contractAddress string, sharesStroops int64) (int64, error) {
-	return s.invoker.SimulateI128Function(ctx, contractAddress, "preview_withdraw_net", sharesStroops)
+	val, err := s.invoker.QueryWithI128Arg(ctx, contractAddress, "preview_withdraw_net", sharesStroops)
+	if err != nil {
+		return 0, err
+	}
+	if val.Type != xdr.ScValTypeScvI128 || val.I128 == nil {
+		return 0, errors.New("expected i128 return value")
+	}
+	return int64(val.I128.Lo), nil
+}
+
+func (s *SorobanVaultChainInvoker) PreviewDeposit(ctx context.Context, contractAddress string, amountStroops int64) (int64, error) {
+	val, err := s.invoker.QueryWithI128Arg(ctx, contractAddress, "preview_deposit", amountStroops)
+	if err != nil {
+		return 0, err
+	}
+	if val.Type != xdr.ScValTypeScvI128 || val.I128 == nil {
+		return 0, errors.New("expected i128 return value")
+	}
+	return int64(val.I128.Lo), nil
+}
+
+func (s *SorobanVaultChainInvoker) PreviewWithdraw(ctx context.Context, contractAddress string, sharesStroops int64) (int64, error) {
+	val, err := s.invoker.QueryWithI128Arg(ctx, contractAddress, "preview_withdraw", sharesStroops)
+	if err != nil {
+		return 0, err
+	}
+	if val.Type != xdr.ScValTypeScvI128 || val.I128 == nil {
+		return 0, errors.New("expected i128 return value")
+	}
+	return int64(val.I128.Lo), nil
 }

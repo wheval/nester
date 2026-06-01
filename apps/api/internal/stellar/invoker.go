@@ -558,6 +558,70 @@ func (c *ContractInvoker) InvokeWithI128Pair(ctx context.Context, contractAddres
 	return c.waitForTx(ctx, hash)
 }
 
+// QueryWithI128Arg simulates a contract call with one i128 arg and returns the decoded XDR result.
+// It is intended for read-only preview functions.
+func (c *ContractInvoker) QueryWithI128Arg(ctx context.Context, contractAddress, functionName string, arg int64) (xdr.ScVal, error) {
+	contractScAddr, err := contractAddressToXDR(contractAddress)
+	if err != nil {
+		return xdr.ScVal{}, err
+	}
+
+	hostFn := xdr.HostFunction{
+		Type: xdr.HostFunctionTypeHostFunctionTypeInvokeContract,
+		InvokeContract: &xdr.InvokeContractArgs{
+			ContractAddress: contractScAddr,
+			FunctionName:    xdr.ScSymbol(functionName),
+			Args: []xdr.ScVal{
+				int64ToI128ScVal(arg),
+			},
+		},
+	}
+
+	seq, err := c.getSequenceNumber(ctx)
+	if err != nil {
+		return xdr.ScVal{}, fmt.Errorf("get sequence number: %w", err)
+	}
+
+	sourceAccount := txnbuild.NewSimpleAccount(c.kp.Address(), seq)
+
+	tx, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
+		SourceAccount:        &sourceAccount,
+		IncrementSequenceNum: true,
+		Operations: []txnbuild.Operation{
+			&txnbuild.InvokeHostFunction{
+				HostFunction: hostFn,
+			},
+		},
+		BaseFee:       txnbuild.MinBaseFee,
+		Preconditions: txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(int64((5 * time.Minute).Seconds()))},
+	})
+	if err != nil {
+		return xdr.ScVal{}, fmt.Errorf("build transaction: %w", err)
+	}
+
+	txB64, err := tx.Base64()
+	if err != nil {
+		return xdr.ScVal{}, fmt.Errorf("encode transaction: %w", err)
+	}
+
+	simResult, err := c.simulate(ctx, txB64)
+	if err != nil {
+		return xdr.ScVal{}, err
+	}
+
+	if len(simResult.Results) == 0 {
+		return xdr.ScVal{}, errors.New("simulation returned no results")
+	}
+
+	var parsed xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(simResult.Results[0].XDR, &parsed); err != nil {
+		return xdr.ScVal{}, fmt.Errorf("decode result xdr: %w", err)
+	}
+
+	return parsed, nil
+}
+
+
 // AllocationWeightEntry is a single protocol weight for on-chain set_weights.
 type AllocationWeightEntry struct {
 	Protocol  string

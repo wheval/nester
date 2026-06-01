@@ -18,6 +18,8 @@ import (
 type VaultDepositInvoker interface {
 	DepositToVault(ctx context.Context, contractAddress string, amountStroops int64) error
 	WithdrawFromVault(ctx context.Context, contractAddress string, sharesStroops int64, slippageBps int) error
+	PreviewDeposit(ctx context.Context, contractAddress string, amountStroops int64) (int64, error)
+	PreviewWithdraw(ctx context.Context, contractAddress string, sharesStroops int64) (int64, error)
 	HarvestVault(ctx context.Context, contractAddress, userAddress string, compound bool) (string, error)
 }
 
@@ -28,6 +30,12 @@ type NoopVaultDepositInvoker struct{}
 func (NoopVaultDepositInvoker) DepositToVault(_ context.Context, _ string, _ int64) error { return nil }
 func (NoopVaultDepositInvoker) WithdrawFromVault(_ context.Context, _ string, _ int64, _ int) error {
 	return nil
+}
+func (NoopVaultDepositInvoker) PreviewDeposit(_ context.Context, _ string, _ int64) (int64, error) {
+	return 0, nil
+}
+func (NoopVaultDepositInvoker) PreviewWithdraw(_ context.Context, _ string, _ int64) (int64, error) {
+	return 0, nil
 }
 func (NoopVaultDepositInvoker) HarvestVault(_ context.Context, _, _ string, _ bool) (string, error) {
 	return "", nil
@@ -688,4 +696,102 @@ func decimalScale(value decimal.Decimal) int32 {
 		return 0
 	}
 	return -exponent
+}
+
+// ── Preview endpoints ─────────────────────────────────────────────────────────
+
+type PreviewDepositInput struct {
+	VaultID uuid.UUID
+	Amount  decimal.Decimal
+}
+
+type PreviewDepositOutput struct {
+	GrossAmount          decimal.Decimal `json:"gross_amount"`
+	ManagementFee        decimal.Decimal `json:"management_fee"`
+	NetAmount            decimal.Decimal `json:"net_amount"`
+	SharesReceived       decimal.Decimal `json:"shares_received"`
+	CurrentPricePerShare decimal.Decimal `json:"current_price_per_share"`
+}
+
+type PreviewWithdrawInput struct {
+	VaultID uuid.UUID
+	Shares  decimal.Decimal
+}
+
+type PreviewWithdrawOutput struct {
+	GrossAmount          decimal.Decimal `json:"gross_amount"`
+	ManagementFee        decimal.Decimal `json:"management_fee"`
+	NetAmount            decimal.Decimal `json:"net_amount"`
+	CurrentPricePerShare decimal.Decimal `json:"current_price_per_share"`
+}
+
+func (s *VaultService) PreviewDeposit(ctx context.Context, input PreviewDepositInput) (PreviewDepositOutput, error) {
+	if input.VaultID == uuid.Nil {
+		return PreviewDepositOutput{}, vault.ErrInvalidVault
+	}
+	if input.Amount.Cmp(decimal.Zero) <= 0 {
+		return PreviewDepositOutput{}, vault.ErrInvalidAmount
+	}
+	existing, err := s.repository.GetVault(ctx, input.VaultID)
+	if err != nil {
+		return PreviewDepositOutput{}, err
+	}
+	var shares decimal.Decimal
+	if s.depositInvoker != nil {
+		stroops := input.Amount.Mul(decimal.NewFromInt(10_000_000)).Round(0).IntPart()
+		sharesStroops, err := s.depositInvoker.PreviewDeposit(ctx, existing.ContractAddress, stroops)
+		if err != nil {
+			return PreviewDepositOutput{}, fmt.Errorf("on-chain preview deposit failed: %w", err)
+		}
+		shares = decimal.NewFromInt(sharesStroops).Div(decimal.NewFromInt(10_000_000))
+	} else {
+		shares = input.Amount
+	}
+	price := decimal.Zero
+	if shares.GreaterThan(decimal.Zero) {
+		price = input.Amount.DivRound(shares, 6)
+	}
+	return PreviewDepositOutput{
+		GrossAmount:          input.Amount,
+		ManagementFee:        decimal.Zero,
+		NetAmount:            input.Amount,
+		SharesReceived:       shares,
+		CurrentPricePerShare: price,
+	}, nil
+}
+
+func (s *VaultService) PreviewWithdraw(ctx context.Context, input PreviewWithdrawInput) (PreviewWithdrawOutput, error) {
+	if input.VaultID == uuid.Nil {
+		return PreviewWithdrawOutput{}, vault.ErrInvalidVault
+	}
+	if input.Shares.Cmp(decimal.Zero) <= 0 {
+		return PreviewWithdrawOutput{}, vault.ErrInvalidAmount
+	}
+	existing, err := s.repository.GetVault(ctx, input.VaultID)
+	if err != nil {
+		return PreviewWithdrawOutput{}, err
+	}
+	var grossAmount decimal.Decimal
+	if s.depositInvoker != nil {
+		sharesStroops := input.Shares.Mul(decimal.NewFromInt(10_000_000)).Round(0).IntPart()
+		amountStroops, err := s.depositInvoker.PreviewWithdraw(ctx, existing.ContractAddress, sharesStroops)
+		if err != nil {
+			return PreviewWithdrawOutput{}, fmt.Errorf("on-chain preview withdraw failed: %w", err)
+		}
+		grossAmount = decimal.NewFromInt(amountStroops).Div(decimal.NewFromInt(10_000_000))
+	} else {
+		grossAmount = input.Shares
+	}
+	estimatedFee := grossAmount.Mul(decimal.NewFromFloat(0.005)).Round(6)
+	netAmount := grossAmount.Sub(estimatedFee)
+	price := decimal.Zero
+	if input.Shares.GreaterThan(decimal.Zero) {
+		price = grossAmount.DivRound(input.Shares, 6)
+	}
+	return PreviewWithdrawOutput{
+		GrossAmount:          grossAmount,
+		ManagementFee:        estimatedFee,
+		NetAmount:            netAmount,
+		CurrentPricePerShare: price,
+	}, nil
 }
