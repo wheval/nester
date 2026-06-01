@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,6 +155,64 @@ func (s *adminHandlerStubService) UnpauseVault(_ context.Context, id uuid.UUID) 
 	return detail, nil
 }
 
+func (s *adminHandlerStubService) CreateAllocation(_ context.Context, input service.CreateAllocationInput) (vault.Allocation, error) {
+	detail, ok := s.vaults[input.VaultID]
+	if !ok {
+		return vault.Allocation{}, vault.ErrVaultNotFound
+	}
+	allocation := vault.Allocation{
+		ID:          uuid.New(),
+		VaultID:     input.VaultID,
+		Protocol:    input.Protocol,
+		Amount:      input.Weight,
+		APY:         input.APY,
+		Status:      "active",
+		AllocatedAt: time.Now().UTC(),
+	}
+	detail.Allocations = append(detail.Allocations, allocation)
+	s.vaults[input.VaultID] = detail
+	return allocation, nil
+}
+
+func (s *adminHandlerStubService) UpdateAllocation(_ context.Context, input service.UpdateAllocationInput) (vault.Allocation, error) {
+	detail, ok := s.vaults[input.VaultID]
+	if !ok {
+		return vault.Allocation{}, vault.ErrVaultNotFound
+	}
+	for i, allocation := range detail.Allocations {
+		if allocation.ID != input.AllocationID {
+			continue
+		}
+		if input.Protocol != nil {
+			detail.Allocations[i].Protocol = *input.Protocol
+		}
+		if input.Weight != nil {
+			detail.Allocations[i].Amount = *input.Weight
+		}
+		if input.APY != nil {
+			detail.Allocations[i].APY = *input.APY
+		}
+		s.vaults[input.VaultID] = detail
+		return detail.Allocations[i], nil
+	}
+	return vault.Allocation{}, vault.ErrAllocationNotFound
+}
+
+func (s *adminHandlerStubService) DeleteAllocation(_ context.Context, input service.DeleteAllocationInput) error {
+	detail, ok := s.vaults[input.VaultID]
+	if !ok {
+		return vault.ErrVaultNotFound
+	}
+	for i, allocation := range detail.Allocations {
+		if allocation.ID == input.AllocationID {
+			detail.Allocations = append(detail.Allocations[:i], detail.Allocations[i+1:]...)
+			s.vaults[input.VaultID] = detail
+			return nil
+		}
+	}
+	return vault.ErrAllocationNotFound
+}
+
 func (s *adminHandlerStubService) ListSettlements(context.Context, admindomain.SettlementListFilter) ([]admindomain.SettlementSummary, int, error) {
 	return s.settlements, len(s.settlements), nil
 }
@@ -162,8 +221,30 @@ func (s *adminHandlerStubService) ListUsers(context.Context, admindomain.UserLis
 	return s.users, len(s.users), nil
 }
 
+func (s *adminHandlerStubService) ListVaultRebalances(context.Context, uuid.UUID) ([]admindomain.VaultRebalanceRecord, error) {
+	return []admindomain.VaultRebalanceRecord{}, nil
+}
+
 func (s *adminHandlerStubService) GetDetailedHealth(context.Context) (admindomain.DetailedHealth, error) {
 	return s.health, nil
+}
+
+func (s *adminHandlerStubService) TriggerRebalance(_ context.Context, id uuid.UUID, req admindomain.RebalanceRequest) (admindomain.RebalanceResponse, error) {
+	if _, ok := s.vaults[id]; !ok {
+		return admindomain.RebalanceResponse{}, vault.ErrVaultNotFound
+	}
+	if req.DryRun {
+		return admindomain.RebalanceResponse{
+			Status:      "dry_run",
+			RebalanceID: uuid.New(),
+		}, nil
+	}
+	return admindomain.RebalanceResponse{
+		Status:                "submitted",
+		TxHash:                "test-hash",
+		RebalanceID:           uuid.New(),
+		EstimatedCompletionMS: 5000,
+	}, nil
 }
 
 func TestAdminHandlerGetDashboard(t *testing.T) {
@@ -211,7 +292,7 @@ func TestAdminHandlerAuthDashboardRequiresAdmin(t *testing.T) {
 	rules := []middleware.RouteRule{
 		{PathPrefix: "/api/v1/admin/", Role: "admin"},
 	}
-	protected := middleware.Authenticate("admin-test-secret", rules)(mux)
+	protected := middleware.Authenticate("admin-test-secret", "", rules)(mux)
 	server := httptest.NewServer(protected)
 	defer server.Close()
 
@@ -244,7 +325,7 @@ func TestAdminHandlerListPauseVerifyFlow(t *testing.T) {
 	vaultID := uuid.New()
 	svc := newAdminHandlerStubService(vaultID)
 
-	h := NewAdminHandler(svc)
+	h := NewAdminHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -301,7 +382,7 @@ func TestAdminHandlerListPauseVerifyFlow(t *testing.T) {
 
 func TestAdminHandlerDateFilterValidation(t *testing.T) {
 	vaultID := uuid.New()
-	h := NewAdminHandler(newAdminHandlerStubService(vaultID))
+	h := NewAdminHandler(newAdminHandlerStubService(vaultID), nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -322,7 +403,7 @@ func TestAdminHandlerDateFilterValidation(t *testing.T) {
 func TestAdminHandlerAuthListPauseVerify(t *testing.T) {
 	vaultID := uuid.New()
 	svc := newAdminHandlerStubService(vaultID)
-	h := NewAdminHandler(svc)
+	h := NewAdminHandler(svc, nil)
 
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -330,7 +411,7 @@ func TestAdminHandlerAuthListPauseVerify(t *testing.T) {
 	rules := []middleware.RouteRule{
 		{PathPrefix: "/api/v1/admin/", Role: "admin"},
 	}
-	protected := middleware.Authenticate("admin-test-secret", rules)(mux)
+	protected := middleware.Authenticate("admin-test-secret", "", rules)(mux)
 	server := httptest.NewServer(protected)
 	defer server.Close()
 
@@ -383,6 +464,96 @@ func TestAdminHandlerAuthListPauseVerify(t *testing.T) {
 	}
 }
 
+func TestAdminHandlerRebalanceAuth(t *testing.T) {
+	vaultID := uuid.New()
+	h := NewAdminHandler(newAdminHandlerStubService(vaultID))
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rules := []middleware.RouteRule{
+		{PathPrefix: "/api/v1/admin/", Role: "admin"},
+	}
+	protected := middleware.Authenticate("admin-test-secret", "", rules)(mux)
+	server := httptest.NewServer(protected)
+	defer server.Close()
+
+	nonAdminToken := makeAdminToken(t, "admin-test-secret", []string{"operator"})
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/admin/vaults/"+vaultID.String()+"/rebalance", strings.NewReader(`{"strategy":"auto","dry_run":true}`))
+	req.Header.Set("Authorization", "Bearer "+nonAdminToken)
+	req.Header.Set("Content-Type", "application/json")
+	nonAdminResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST rebalance as non-admin failed: %v", err)
+	}
+	defer nonAdminResp.Body.Close()
+	if nonAdminResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-admin rebalance status = %d, want 403", nonAdminResp.StatusCode)
+	}
+
+	adminToken := makeAdminToken(t, "admin-test-secret", []string{"admin"})
+	adminReq, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/admin/vaults/"+vaultID.String()+"/rebalance", strings.NewReader(`{"strategy":"auto","dry_run":true}`))
+	adminReq.Header.Set("Authorization", "Bearer "+adminToken)
+	adminReq.Header.Set("Content-Type", "application/json")
+	adminResp, err := http.DefaultClient.Do(adminReq)
+	if err != nil {
+		t.Fatalf("POST rebalance as admin failed: %v", err)
+	}
+	defer adminResp.Body.Close()
+	if adminResp.StatusCode != http.StatusOK {
+		t.Fatalf("admin rebalance status = %d, want 200", adminResp.StatusCode)
+	}
+}
+
+func TestAdminHandlerAllocationEndpointsRequireAdmin(t *testing.T) {
+	vaultID := uuid.New()
+	allocationID := uuid.New()
+	h := NewAdminHandler(newAdminHandlerStubService(vaultID))
+
+	mux := http.NewServeMux()
+	h.Register(mux)
+	rules := []middleware.RouteRule{{PathPrefix: "/api/v1/admin/", Role: "admin"}}
+	protected := middleware.Authenticate("admin-test-secret", "", rules)(mux)
+	server := httptest.NewServer(protected)
+	defer server.Close()
+
+	nonAdminToken := makeAdminToken(t, "admin-test-secret", []string{"operator"})
+	body := strings.NewReader(`{"protocol":"compound","weight":"40","apy":"5"}`)
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/admin/vaults/"+vaultID.String()+"/allocations", body)
+	req.Header.Set("Authorization", "Bearer "+nonAdminToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST allocation as non-admin failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-admin POST allocation status = %d, want 403", resp.StatusCode)
+	}
+
+	patchReq, _ := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/admin/vaults/"+vaultID.String()+"/allocations/"+allocationID.String(), strings.NewReader(`{"weight":"50"}`))
+	patchReq.Header.Set("Authorization", "Bearer "+nonAdminToken)
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("PATCH allocation as non-admin failed: %v", err)
+	}
+	defer patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-admin PATCH allocation status = %d, want 403", patchResp.StatusCode)
+	}
+
+	deleteReq, _ := http.NewRequest(http.MethodDelete, server.URL+"/api/v1/admin/vaults/"+vaultID.String()+"/allocations/"+allocationID.String(), nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+nonAdminToken)
+	deleteResp, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatalf("DELETE allocation as non-admin failed: %v", err)
+	}
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-admin DELETE allocation status = %d, want 403", deleteResp.StatusCode)
+	}
+}
+
 func makeAdminToken(t *testing.T, secret string, roles []string) string {
 	t.Helper()
 	signed, err := auth.MakeJWT(auth.Claims{
@@ -413,12 +584,27 @@ func (adminErrStub) PauseVault(context.Context, uuid.UUID) (admindomain.VaultDet
 func (adminErrStub) UnpauseVault(context.Context, uuid.UUID) (admindomain.VaultDetail, error) {
 	return admindomain.VaultDetail{}, nil
 }
+func (adminErrStub) CreateAllocation(context.Context, service.CreateAllocationInput) (vault.Allocation, error) {
+	return vault.Allocation{}, nil
+}
+func (adminErrStub) UpdateAllocation(context.Context, service.UpdateAllocationInput) (vault.Allocation, error) {
+	return vault.Allocation{}, nil
+}
+func (adminErrStub) DeleteAllocation(context.Context, service.DeleteAllocationInput) error {
+	return nil
+}
 func (adminErrStub) ListSettlements(context.Context, admindomain.SettlementListFilter) ([]admindomain.SettlementSummary, int, error) {
 	return nil, 0, nil
 }
 func (adminErrStub) ListUsers(context.Context, admindomain.UserListFilter) ([]admindomain.UserSummary, int, error) {
 	return nil, 0, nil
 }
+func (adminErrStub) ListVaultRebalances(context.Context, uuid.UUID) ([]admindomain.VaultRebalanceRecord, error) {
+	return nil, nil
+}
 func (adminErrStub) GetDetailedHealth(context.Context) (admindomain.DetailedHealth, error) {
 	return admindomain.DetailedHealth{}, nil
+}
+func (adminErrStub) TriggerRebalance(context.Context, uuid.UUID, admindomain.RebalanceRequest) (admindomain.RebalanceResponse, error) {
+	return admindomain.RebalanceResponse{}, nil
 }

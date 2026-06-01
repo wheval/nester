@@ -49,6 +49,10 @@ func (s *stubVaultRepository) RecordWithdrawal(_ context.Context, id uuid.UUID, 
 	return errors.New("not implemented")
 }
 
+func (s *stubVaultRepository) RecordHarvest(_ context.Context, input vault.HarvestRecordInput) error {
+	return errors.New("not implemented")
+}
+
 func (s *stubVaultRepository) SoftDeleteVault(_ context.Context, id uuid.UUID) error {
 	return errors.New("not implemented")
 }
@@ -104,6 +108,10 @@ func (s *stubVaultRepositoryWithCount) UpdateVault(_ context.Context, id uuid.UU
 }
 
 func (s *stubVaultRepositoryWithCount) RecordWithdrawal(_ context.Context, id uuid.UUID, record vault.TransactionRecord) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubVaultRepositoryWithCount) RecordHarvest(_ context.Context, input vault.HarvestRecordInput) error {
 	return errors.New("not implemented")
 }
 

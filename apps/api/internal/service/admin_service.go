@@ -16,8 +16,13 @@ import (
 )
 
 var (
-	ErrInvalidAdminInput = errors.New("invalid admin input")
+	ErrInvalidAdminInput    = errors.New("invalid admin input")
+	ErrRebalanceInFlight    = errors.New("rebalance already in flight for this vault")
+	ErrChainNotConfigured   = errors.New("on-chain operator not configured")
+	ErrRebalanceNotEligible = errors.New("vault is not eligible for rebalance")
 )
+
+const rebalanceEstimatedCompletionMS = int64(5000)
 
 const (
 	dashboardCacheTTL   = 2 * time.Minute
@@ -27,22 +32,43 @@ const (
 type VaultChainInvoker interface {
 	PauseVault(ctx context.Context, contractAddress string) error
 	UnpauseVault(ctx context.Context, contractAddress string) error
+	RebalanceVault(ctx context.Context, contractAddress string) (txHash string, err error)
+	SimulateRebalanceVault(ctx context.Context, contractAddress string) error
+	SetAllocationWeights(ctx context.Context, strategyContractAddress string, weights []AllocationWeightEntry) error
+}
+
+// AllocationWeightEntry is a protocol weight expressed in basis points.
+type AllocationWeightEntry struct {
+	Protocol  string
+	WeightBps uint32
 }
 
 // NoopVaultChainInvoker is the default invoker used when no on-chain
 // integration is configured in-process.
 type NoopVaultChainInvoker struct{}
 
-func (NoopVaultChainInvoker) PauseVault(_ context.Context, _ string) error   { return nil }
+func (NoopVaultChainInvoker) PauseVault(_ context.Context, _ string) error { return nil }
 func (NoopVaultChainInvoker) UnpauseVault(_ context.Context, _ string) error { return nil }
+func (NoopVaultChainInvoker) RebalanceVault(_ context.Context, _ string) (string, error) {
+	return "", ErrChainNotConfigured
+}
+func (NoopVaultChainInvoker) SimulateRebalanceVault(_ context.Context, _ string) error {
+	return ErrChainNotConfigured
+}
+func (NoopVaultChainInvoker) SetAllocationWeights(_ context.Context, _ string, _ []AllocationWeightEntry) error {
+	return nil
+}
 
 type AdminService struct {
-	repository            admindomain.Repository
-	chainInvoker          VaultChainInvoker
-	httpClient            *http.Client
-	stellarHorizonURL     string
-	settlementProviderURL string
-	startedAt             time.Time
+	repository                admindomain.Repository
+	vaultRepository           vault.Repository
+	chainInvoker              VaultChainInvoker
+	httpClient                *http.Client
+	stellarHorizonURL         string
+	settlementProviderURL     string
+	allocationStrategyAddress string
+	minAllocationWeight       decimal.Decimal
+	startedAt                 time.Time
 
 	dashboardCache   *admindomain.VaultHealthDashboard
 	dashboardCacheAt time.Time
@@ -51,21 +77,27 @@ type AdminService struct {
 
 func NewAdminService(
 	repository admindomain.Repository,
+	vaultRepository vault.Repository,
 	chainInvoker VaultChainInvoker,
 	stellarHorizonURL string,
 	settlementProviderURL string,
+	allocationStrategyAddress string,
+	minAllocationWeightPercent int,
 ) *AdminService {
 	if chainInvoker == nil {
 		chainInvoker = NoopVaultChainInvoker{}
 	}
 
 	return &AdminService{
-		repository:            repository,
-		chainInvoker:          chainInvoker,
-		httpClient:            &http.Client{Timeout: 5 * time.Second},
-		stellarHorizonURL:     stellarHorizonURL,
-		settlementProviderURL: settlementProviderURL,
-		startedAt:             time.Now().UTC(),
+		repository:                repository,
+		vaultRepository:           vaultRepository,
+		chainInvoker:              chainInvoker,
+		httpClient:                &http.Client{Timeout: 5 * time.Second},
+		stellarHorizonURL:         stellarHorizonURL,
+		settlementProviderURL:     settlementProviderURL,
+		allocationStrategyAddress: allocationStrategyAddress,
+		minAllocationWeight:       decimal.NewFromInt(int64(minAllocationWeightPercent)),
+		startedAt:                 time.Now().UTC(),
 	}
 }
 
@@ -228,6 +260,13 @@ func (s *AdminService) ListUsers(
 	filter admindomain.UserListFilter,
 ) ([]admindomain.UserSummary, int, error) {
 	return s.repository.ListUsers(ctx, filter)
+}
+
+func (s *AdminService) ListVaultRebalances(ctx context.Context, vaultID uuid.UUID) ([]admindomain.VaultRebalanceRecord, error) {
+	if vaultID == uuid.Nil {
+		return nil, ErrInvalidAdminInput
+	}
+	return s.repository.ListVaultRebalances(ctx, vaultID)
 }
 
 func (s *AdminService) GetDetailedHealth(ctx context.Context) (admindomain.DetailedHealth, error) {

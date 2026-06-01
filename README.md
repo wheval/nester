@@ -99,7 +99,7 @@ All AI suggestions include reasoning and confidence levels. Disclaimer always pr
 
 Nester is non-custodial. Users maintain full ownership of assets through smart contracts—the protocol cannot freeze, seize, or redirect funds.
 
-**Audit Status:** [Pending — link to audits when complete]
+**Audit Status:** [Audit package and report](/audits)
 
 **Risk Mitigations:** Multi-protocol diversification limits single-point-of-failure exposure. Real-time exploit monitoring with automatic pause mechanisms. Insurance fund for covered events. Rate limiting and withdrawal delays for large transactions.
 

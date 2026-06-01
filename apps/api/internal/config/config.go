@@ -18,6 +18,7 @@ type Config struct {
 	server                ServerConfig
 	database              DatabaseConfig
 	stellar               StellarConfig
+	allocation            AllocationConfig
 	redis                 RedisConfig
 	settlementProviderURL string
 	auth                  AuthConfig
@@ -30,6 +31,12 @@ type Config struct {
 	startup               StartupConfig
 	bank                  BankConfig
 	transactionPoller     TransactionPollerConfig
+	intelligence          IntelligenceConfig
+}
+
+type IntelligenceConfig struct {
+	serviceURL string
+	timeout    time.Duration
 }
 
 // TransactionPollerConfig governs the background loop that reconciles pending
@@ -91,6 +98,7 @@ type StellarConfig struct {
 
 type AuthConfig struct {
 	secret          string
+	serviceAPIKey   string
 	tokenExpiry     time.Duration
 	challengeExpiry time.Duration
 }
@@ -165,6 +173,7 @@ func Load() (*Config, error) {
 		settlementProviderURL: loader.stringDefault("SETTLEMENT_PROVIDER_URL", ""),
 		auth: AuthConfig{
 			secret:          loader.requiredString("AUTH_JWT_SECRET"),
+			serviceAPIKey:   loader.stringDefault("NESTER_SERVICE_API_KEY", ""),
 			tokenExpiry:     loader.durationDefault("AUTH_TOKEN_EXPIRY", 24*time.Hour),
 			challengeExpiry: loader.durationDefault("AUTH_CHALLENGE_EXPIRY", 5*time.Minute),
 		},
@@ -200,6 +209,10 @@ func Load() (*Config, error) {
 			paystackKey:    loader.stringDefault("PAYSTACK_SECRET_KEY", ""),
 			flutterwaveKey: loader.stringDefault("FLUTTERWAVE_SECRET_KEY", ""),
 		},
+		intelligence: IntelligenceConfig{
+			serviceURL: loader.stringDefault("INTELLIGENCE_SERVICE_URL", "http://localhost:8000"),
+			timeout:    loader.durationDefault("INTELLIGENCE_SERVICE_TIMEOUT", 30*time.Second),
+		},
 		transactionPoller: TransactionPollerConfig{
 			enabled:  loader.boolDefault("TX_POLLER_ENABLED", true),
 			interval: loader.durationDefault("TX_POLLER_INTERVAL", 15*time.Second),
@@ -230,6 +243,10 @@ func (c Config) Database() DatabaseConfig {
 
 func (c Config) Stellar() StellarConfig {
 	return c.stellar
+}
+
+func (c Config) Allocation() AllocationConfig {
+	return c.allocation
 }
 
 func (s StellarConfig) USDCIssuer() string {
@@ -314,6 +331,18 @@ func (r RedisConfig) Addr() string {
 
 func (c Config) Bank() BankConfig {
 	return c.bank
+}
+
+func (c Config) Intelligence() IntelligenceConfig {
+	return c.intelligence
+}
+
+func (i IntelligenceConfig) ServiceURL() string {
+	return i.serviceURL
+}
+
+func (i IntelligenceConfig) Timeout() time.Duration {
+	return i.timeout
 }
 
 func (c Config) TransactionPoller() TransactionPollerConfig {
@@ -459,6 +488,14 @@ func (c *Config) validate(loader *envLoader) {
 		loader.addError("TX_POLLER_MIN_AGE must not be negative")
 	}
 
+	if c.stellar.withdrawalSlippageBps <= 0 || c.stellar.withdrawalSlippageBps > 300 {
+		loader.addError("WITHDRAWAL_SLIPPAGE_BPS must be between 1 and 300")
+	}
+
+	if c.allocation.minWeightPercent < 1 || c.allocation.minWeightPercent > 100 {
+		loader.addError("MIN_ALLOCATION_WEIGHT must be between 1 and 100")
+	}
+
 	// Require at least one payment provider key in production/staging so
 	// offramp features (bank list, account resolution) work at deploy time
 	// rather than failing silently when a user first triggers them.
@@ -567,6 +604,10 @@ func (l LogConfig) Format() string {
 
 func (a AuthConfig) Secret() string {
 	return a.secret
+}
+
+func (a AuthConfig) ServiceAPIKey() string {
+	return a.serviceAPIKey
 }
 
 func (a AuthConfig) TokenExpiry() time.Duration {

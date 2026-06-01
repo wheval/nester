@@ -24,6 +24,9 @@ import {
 import { WithdrawModal } from "@/components/vault-action-modals";
 import { cn } from "@/lib/utils";
 import { GuidedTour } from "@/components/onboarding/GuidedTour";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { RebalanceSuggestionCard } from "@/components/dashboard/RebalanceSuggestionCard";
+import { profileApi } from "@/lib/api/profile";
 import { useTokenPrices } from "@/hooks/useTokenPrices";
 import { useNetwork } from "@/hooks/useNetwork";
 import { AppShell } from "@/components/app-shell";
@@ -53,6 +56,17 @@ export default function Dashboard() {
     const router = useRouter();
     const [selectedPosition, setSelectedPosition] = useState<PortfolioPosition | null>(null);
     const [chartPeriod, setChartPeriod] = useState<(typeof CHART_PERIODS)[number]>("1W");
+    const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+    useEffect(() => {
+        if (!isConnected) return;
+        profileApi
+            .get()
+            .then((p) => {
+                if (!p.onboarding_completed) setOnboardingOpen(true);
+            })
+            .catch(() => {});
+    }, [isConnected]);
 
     useEffect(() => {
         if (!isConnected) router.push("/");
@@ -175,6 +189,18 @@ export default function Dashboard() {
                     </div>
                 </div>
             </motion.div>
+
+            {positions.length > 0 && (
+                <div className="mb-6 space-y-3">
+                    {positions.slice(0, 3).map((p) => (
+                        <RebalanceSuggestionCard
+                            key={p.id}
+                            vaultId={p.vaultId}
+                            vaultName={p.vaultName}
+                        />
+                    ))}
+                </div>
+            )}
 
             {/* ── Positions ── */}
             <motion.div
@@ -334,6 +360,11 @@ export default function Dashboard() {
                 open={!!selectedPosition}
                 onClose={() => setSelectedPosition(null)}
                 position={selectedPosition}
+            />
+            <OnboardingWizard
+                open={onboardingOpen}
+                onClose={() => setOnboardingOpen(false)}
+                onComplete={() => setOnboardingOpen(false)}
             />
             <GuidedTour />
         </AppShell>

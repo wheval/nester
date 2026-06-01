@@ -79,9 +79,7 @@ func (h *BankHandler) resolveAccount(w http.ResponseWriter, r *http.Request) {
 func (h *BankHandler) writeDomainError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, bank.ErrAccountNotFound):
-		// 422 Unprocessable Entity: the request was valid but Paystack could not
-		// resolve the account — invalid account/bank combination.
-		response.WriteJSON(w, http.StatusUnprocessableEntity, response.Response{
+		response.WriteJSON(w, http.StatusNotFound, response.Response{
 			Success: false,
 			Error: &response.ErrorBody{
 				Code:    "ACCOUNT_NOT_FOUND",

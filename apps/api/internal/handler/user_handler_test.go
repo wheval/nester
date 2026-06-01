@@ -55,6 +55,24 @@ func (m *mockUserRepository) GetRoles(_ context.Context, _ uuid.UUID) ([]string,
 	return []string{}, nil
 }
 
+func (m *mockUserRepository) UpdateProfile(_ context.Context, id uuid.UUID, patch user.ProfilePatch) (*user.User, error) {
+	u, err := m.GetByID(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	if patch.RiskProfile != nil {
+		u.RiskProfile = patch.RiskProfile
+	}
+	if patch.SavingsGoal != nil {
+		u.SavingsGoal = patch.SavingsGoal
+	}
+	if patch.OnboardingCompleted != nil {
+		u.OnboardingCompleted = *patch.OnboardingCompleted
+	}
+	m.users[id] = u
+	return u, nil
+}
+
 func TestUserHandler_Register(t *testing.T) {
 	repo := newMockUserRepository()
 	svc := service.NewUserService(repo)

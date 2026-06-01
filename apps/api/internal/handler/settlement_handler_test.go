@@ -97,7 +97,7 @@ func TestSettlementHandler_PostCreates201(t *testing.T) {
 	userID := uuid.New()
 	vaultID := uuid.New()
 	svc := service.NewSettlementService(newSettlementStubRepo())
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	// Inject auth user middleware
@@ -125,7 +125,7 @@ func TestSettlementHandler_PostCreates201(t *testing.T) {
 
 func TestSettlementHandler_PostInvalidBody400(t *testing.T) {
 	svc := service.NewSettlementService(newSettlementStubRepo())
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	server := httptest.NewServer(mux)
@@ -145,7 +145,7 @@ func TestSettlementHandler_PostDomainValidation400(t *testing.T) {
 	userID := uuid.New()
 	vaultID := uuid.New()
 	svc := service.NewSettlementService(newSettlementStubRepo())
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))
@@ -196,7 +196,7 @@ func TestSettlementHandler_Get200And404(t *testing.T) {
 		t.Fatalf("InitiateSettlement: %v", err)
 	}
 
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))
@@ -270,7 +270,7 @@ func TestSettlementHandler_PatchStatus200(t *testing.T) {
 		t.Fatalf("InitiateSettlement: %v", err)
 	}
 
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	// Inject the settlement owner as the authenticated caller.
@@ -321,7 +321,7 @@ func TestSettlementHandler_PatchStatus404NonOwner(t *testing.T) {
 		t.Fatalf("InitiateSettlement: %v", err)
 	}
 
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	// Inject a different user — not the settlement owner.
@@ -348,7 +348,7 @@ func TestSettlementHandler_PatchStatus404NonOwner(t *testing.T) {
 
 func TestSettlementHandler_PatchStatus401NoAuth(t *testing.T) {
 	svc := service.NewSettlementService(newSettlementStubRepo())
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	// No auth injection — handler must return 401.
@@ -376,7 +376,7 @@ func TestSettlementHandler_ListUserSettlementsWithStatus(t *testing.T) {
 	userID := uuid.New()
 	vaultID := uuid.New()
 	svc := service.NewSettlementService(newSettlementStubRepo())
-	h := NewSettlementHandler(svc)
+	h := NewSettlementHandler(svc, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	server := httptest.NewServer(injectAuthUser(auth.User{ID: userID.String()}, mux))

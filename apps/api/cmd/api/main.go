@@ -96,9 +96,15 @@ func run() error {
 		return err
 	}
 
+	systemStateRepository := postgres.NewSystemStateRepository(db)
+
 	vaultRepository := postgres.NewVaultRepository(db)
 	vaultService := service.NewVaultService(vaultRepository)
+	vaultService.SetHarvestDefaultCompound(cfg.Stellar().HarvestDefaultCompound())
 	vaultHandler := handler.NewVaultHandler(vaultService)
+
+	portfolioService := service.NewPortfolioService(vaultRepository)
+	portfolioHandler := handler.NewPortfolioHandler(portfolioService)
 
 	transactionRepository := postgres.NewTransactionRepository(db)
 	transactionService := service.NewTransactionService(transactionRepository, cfg.Stellar().HorizonURL())
@@ -107,13 +113,15 @@ func run() error {
 	transactionService.SetBalanceApplier(vaultRepository)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	settlementRepository := postgres.NewSettlementRepository(db)
-	settlementService := service.NewSettlementService(settlementRepository)
-	settlementHandler := handler.NewSettlementHandler(settlementService)
-
 	userRepository := postgres.NewUserRepository(db)
 	userService := service.NewUserService(userRepository)
 	userHandler := handler.NewUserHandler(userService)
+	userVaultsSvc := service.NewUserVaultsService(vaultRepository)
+	userHandler.SetUserVaultsService(userVaultsSvc)
+
+	settlementRepository := postgres.NewSettlementRepository(db)
+	settlementService := service.NewSettlementService(settlementRepository)
+	settlementHandler := handler.NewSettlementHandler(settlementService, userService)
 
 	adminRepository := postgres.NewAdminRepository(db)
 
@@ -124,6 +132,7 @@ func run() error {
 			cfg.Stellar().HorizonURL(),
 			cfg.Stellar().NetworkPassphrase(),
 			secret,
+			cfg.Stellar().WithdrawalSlippageBps(),
 		)
 		if err != nil {
 			return fmt.Errorf("init chain invoker: %w", err)
@@ -134,15 +143,19 @@ func run() error {
 
 	adminService := service.NewAdminService(
 		adminRepository,
+		vaultRepository,
 		chainInvoker,
 		cfg.Stellar().HorizonURL(),
 		cfg.SettlementProviderURL(),
+		cfg.Stellar().AllocationStrategyAddress(),
+		cfg.Allocation().MinWeightPercent(),
 	)
-	adminHandler := handler.NewAdminHandler(adminService)
+	adminHandler := handler.NewAdminHandler(adminService, userService)
 	adminHandler.SetEventSyncer(&stellarpkg.EventSyncer{
-		DB:     db,
-		RPCURL: cfg.Stellar().RPCURL(),
-		Logger: baseLogger,
+		DB:      db,
+		SysRepo: systemStateRepository,
+		RPCURL:  cfg.Stellar().RPCURL(),
+		Logger:  baseLogger,
 	})
 
 	var challengeStore service.ChallengeStore
@@ -175,6 +188,7 @@ func run() error {
 	wsCtx, wsCancel := context.WithCancel(context.Background())
 	defer wsCancel()
 	go wsHub.Run(wsCtx)
+	vaultHandler.SetWSHub(wsHub)
 
 	performanceRepository := postgres.NewPerformanceRepository(db)
 	vaultRepository = postgres.NewVaultRepository(db)
@@ -296,6 +310,7 @@ func run() error {
 		buildVersion: version,
 	}))
 	vaultHandler.Register(mux)
+	portfolioHandler.Register(mux)
 	transactionHandler.Register(mux)
 	settlementHandler.Register(mux)
 	userHandler.Register(mux)
@@ -311,7 +326,54 @@ func run() error {
 	riskService := services.NewRiskService(vaultRepository)
 	riskHandler := handler.NewRiskHandler(riskService)
 	riskHandler.Register(mux)
-	
+
+	// Vault analytics (APY volatility, Sharpe, Sortino, drawdown, win rate)
+	vaultAnalyticsSvc := service.NewVaultAnalyticsService(performanceRepository)
+	vaultAnalyticsHandler := handler.NewVaultAnalyticsHandler(vaultAnalyticsSvc)
+	vaultAnalyticsHandler.Register(mux)
+
+	// Yield opportunities (DeFiLlama Stellar pools)
+	yieldSvc := service.NewYieldService("")
+	yieldHandler := handler.NewYieldHandler(yieldSvc)
+	yieldHandler.Register(mux)
+
+	// User watchlist
+	watchlistSvc := service.NewWatchlistService(db)
+	watchlistHandler := handler.NewWatchlistHandler(watchlistSvc)
+	watchlistHandler.Register(mux)
+
+	// Savings goals
+	savingsGoalRepo := postgres.NewSavingsGoalRepository(db)
+	savingsGoalSvc := service.NewSavingsGoalService(savingsGoalRepo)
+	savingsGoalHandler := handler.NewSavingsGoalHandler(savingsGoalSvc)
+	savingsGoalHandler.Register(mux)
+
+	// User vault rebalance (suggestions + execution)
+	vaultRebalanceSvc := service.NewVaultRebalanceService(vaultRepository, adminService)
+	vaultHandler.SetRebalanceService(vaultRebalanceSvc)
+
+	// Intelligence proxy (forwards to Python service)
+	intelURL := cfg.Intelligence().ServiceURL()
+	intelProxy := service.NewIntelligenceProxy(intelURL, cfg.Intelligence().Timeout())
+	prometheusClient := service.NewPrometheusClient(service.PrometheusConfig{
+		BaseURL: intelURL,
+		APIKey:  cfg.Auth().ServiceAPIKey(),
+		Timeout: cfg.Intelligence().Timeout(),
+	})
+	intelligenceHandler := handler.NewIntelligenceHandler(intelProxy, prometheusClient)
+	intelligenceHandler.Register(mux)
+
+	intelRelay := service.NewRelayHandler(http.DefaultClient, service.RelayConfig{
+		BaseURL: intelURL,
+		APIKey:  cfg.Auth().ServiceAPIKey(),
+		Timeout: cfg.Intelligence().Timeout(),
+	})
+	intelligenceRelayHandler := handler.NewIntelligenceRelayHandler(intelRelay)
+	intelligenceRelayHandler.Register(mux)
+
+	performanceSnapshotsHandler := handler.NewPerformanceSnapshotsHandler(performanceService)
+	performanceSnapshotsHandler.Register(mux)
+
 	bankHandler.Register(mux)
 
 	mux.HandleFunc("GET /ws", wsHub.ServeWs)
@@ -326,7 +388,7 @@ func run() error {
 		{PathPrefix: "/api/v1/admin/", Public: false, Role: "admin"},
 		{PathPrefix: "/api/v1/", Public: false},
 	}
-	authenticator := middleware.Authenticate(cfg.Auth().Secret(), authRules)
+	authenticator := middleware.Authenticate(cfg.Auth().Secret(), cfg.Auth().ServiceAPIKey(), authRules)
 	globalLimiter := middleware.IPRateLimiter(cfg.RateLimit().GlobalLimit(), cfg.RateLimit().GlobalWindow())
 	writeLimiter := middleware.WriteMethodRateLimiter(cfg.RateLimit().WriteLimit(), cfg.RateLimit().WriteWindow())
 	walletLimiter := middleware.WalletRateLimiter(
@@ -375,7 +437,7 @@ func run() error {
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	stellarpkg.StartEventIndexer(shutdownCtx, baseLogger, db, cfg.Stellar().RPCURL())
+	stellarpkg.StartEventIndexer(shutdownCtx, baseLogger, db, systemStateRepository, cfg.Stellar().RPCURL())
 
 	serverErr := make(chan error, 1)
 	go func() {
